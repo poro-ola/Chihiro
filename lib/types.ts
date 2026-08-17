@@ -1,0 +1,108 @@
+export type ItemType = 'bookmark' | 'note';
+
+export interface Workspace {
+  id: string;
+  name: string;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Collection {
+  id: string;
+  workspaceId: string;
+  name: string;
+  order: number;
+  isCollapsed: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface BaseItem {
+  id: string;
+  collectionId: string;
+  order: number;
+  archivedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BookmarkItem extends BaseItem {
+  type: 'bookmark';
+  title: string;
+  url: string;
+  normalizedUrl: string;
+  note?: string;
+  faviconUrl?: string;
+}
+
+export interface NoteItem extends BaseItem {
+  type: 'note';
+  content: string;
+}
+
+export type BoardItem = BookmarkItem | NoteItem;
+
+export interface AppSettings {
+  id: 'app';
+  activeWorkspaceId: string;
+  leftPanelCollapsed: boolean;
+  rightPanelCollapsed: boolean;
+}
+
+export interface AppMeta {
+  id: 'app';
+  schemaVersion: number;
+  appVersion: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OpenTab {
+  id: number;
+  windowId: number;
+  title: string;
+  url: string;
+  faviconUrl?: string;
+  active: boolean;
+  pinned: boolean;
+}
+
+export type SearchCategory = 'all' | 'bookmark' | 'note' | 'collection' | 'tab';
+
+export type SearchResult =
+  | {
+      id: string;
+      type: 'bookmark' | 'note';
+      title: string;
+      subtitle: string;
+      workspaceId: string;
+      collectionId: string;
+      itemId: string;
+      archived?: boolean;
+    }
+  | {
+      id: string;
+      type: 'collection';
+      title: string;
+      subtitle: string;
+      workspaceId: string;
+      collectionId: string;
+    }
+  | {
+      id: string;
+      type: 'tab';
+      title: string;
+      subtitle: string;
+      tabId: number;
+    };
+
+export interface QianxunBackup {
+  format: 'qianxun-backup';
+  formatVersion: 1;
+  appVersion: string;
+  schemaVersion: number;
+  exportedAt: string;
+  counts: Record<string, number>;
+  database: unknown;
+}

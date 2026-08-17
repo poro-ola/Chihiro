@@ -1,34 +1,26 @@
-import { useState } from 'react';
-import reactLogo from '@/assets/react.svg';
-import wxtLogo from '/wxt.svg';
+import { ArrowUpRight, Database, LayoutDashboard } from 'lucide-react';
 import './App.css';
 
 function App() {
-  const [count, setCount] = useState(0);
-
   return (
-    <>
-      <div>
-        <a href="https://wxt.dev" target="_blank">
-          <img src={wxtLogo} className="logo" alt="WXT logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>WXT + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the WXT and React logos to learn more
-      </p>
-    </>
+    <main className="popup">
+      <header>
+        <div className="popup-mark">千</div>
+        <div>
+          <h1>千寻</h1>
+          <p>标签与资料工作台</p>
+        </div>
+      </header>
+      <button className="open-button" onClick={() => void browser.tabs.create({})}>
+        <LayoutDashboard size={18} />
+        <span>打开工作台</span>
+        <ArrowUpRight size={16} />
+      </button>
+      <footer>
+        <Database size={14} />
+        <span>全部资料仅存于本机 IndexedDB</span>
+      </footer>
+    </main>
   );
 }
 
