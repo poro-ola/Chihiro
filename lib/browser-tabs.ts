@@ -86,21 +86,12 @@ export async function activateTab(tabId: number) {
   if (typeof tab?.windowId === 'number') await browser.windows.update(tab.windowId, { focused: true });
 }
 
-export async function openBookmark(url: string, inNewTab = false) {
+export async function openBookmark(url: string) {
   if (hasTabsApi()) {
-    if (inNewTab) {
-      await browser.tabs.create({ url, active: false });
-      return;
-    }
-    const current = await browser.tabs.query({ active: true, currentWindow: true });
-    if (current[0]?.id != null) {
-      await browser.tabs.update(current[0].id, { url });
-      return;
-    }
     await browser.tabs.create({ url });
     return;
   }
-  window.open(url, inNewTab ? '_blank' : '_self', 'noopener,noreferrer');
+  window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 export async function openBookmarks(urls: string[]) {

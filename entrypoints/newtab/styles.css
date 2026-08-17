@@ -1782,12 +1782,36 @@ kbd {
 
 .bookmark-note-dialog .dialog__header h2 {
   margin: 0;
+  overflow: hidden;
   font-size: 20px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.bookmark-note-dialog__icon {
-  color: #756c42;
-  background: #f3eab9;
+.bookmark-note-dialog__favicon {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  color: var(--accent-dark);
+  background: var(--canvas);
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.bookmark-note-dialog__favicon > span,
+.bookmark-note-dialog__favicon > img {
+  grid-area: 1 / 1;
+}
+
+.bookmark-note-dialog__favicon > img {
+  width: 21px;
+  height: 21px;
+  background: var(--canvas);
+  object-fit: contain;
+}
+
+.bookmark-note-dialog__heading {
+  min-width: 0;
 }
 
 .bookmark-note-dialog__body {

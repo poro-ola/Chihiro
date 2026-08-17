@@ -94,7 +94,7 @@ export function BookmarkDialog({ open, item, focusField = 'url', collectionName,
           </label>
           {error && <p className="dialog-error">{error}</p>}
           <footer className="dialog__footer">
-            <span>⌘/Ctrl + 点击可在后台打开书签</span>
+            <span>点击书签卡片将在新标签页打开</span>
             <div>
               <button type="button" className="secondary-button" onClick={onClose}>取消</button>
               <button type="submit" className="primary-button" disabled={saving}>{saving ? '保存中…' : '保存'}</button>
@@ -111,6 +111,15 @@ interface BookmarkNoteDialogProps {
   item?: BookmarkItem;
   onClose: () => void;
   onSave: (note: string) => Promise<void>;
+}
+
+function bookmarkIconFallback(item?: BookmarkItem) {
+  if (!item) return '•';
+  try {
+    return (new URL(item.url).hostname.replace(/^www\./, '')[0] || item.title[0] || '•').toUpperCase();
+  } catch {
+    return (item.title[0] || '•').toUpperCase();
+  }
 }
 
 export function BookmarkNoteDialog({ open, item, onClose, onSave }: BookmarkNoteDialogProps) {
@@ -178,8 +187,21 @@ export function BookmarkNoteDialog({ open, item, onClose, onSave }: BookmarkNote
     >
       <section className="dialog bookmark-note-dialog" role="dialog" aria-modal="true" aria-labelledby="bookmark-note-dialog-title">
         <header className="dialog__header">
-          <div className="dialog__icon bookmark-note-dialog__icon"><StickyNote size={19} /></div>
-          <div><h2 id="bookmark-note-dialog-title">备注</h2></div>
+          <div className="dialog__icon bookmark-note-dialog__favicon" aria-hidden="true">
+            <span>{bookmarkIconFallback(item)}</span>
+            {item?.faviconUrl && (
+              <img
+                src={item.faviconUrl}
+                alt=""
+                draggable={false}
+                onError={(event) => { event.currentTarget.hidden = true; }}
+              />
+            )}
+          </div>
+          <div className="bookmark-note-dialog__heading">
+            <span className="eyebrow">书签备注</span>
+            <h2 id="bookmark-note-dialog-title" title={item?.title}>{item?.title || '未命名书签'}</h2>
+          </div>
           <button className="icon-button" onClick={() => void closeAfterSave()} aria-label="关闭备注"><X size={18} /></button>
         </header>
         <div className="bookmark-note-dialog__body">

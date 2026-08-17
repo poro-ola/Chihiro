@@ -164,7 +164,7 @@ function SortableBoardItem({
       {item.type === 'bookmark' ? (
         <button
           className="bookmark-card__main"
-          onClick={(event) => void openBookmark(item.url, event.metaKey || event.ctrlKey)}
+          onClick={() => void openBookmark(item.url)}
           title={`${item.title}\n${item.url}`}
         >
           <Favicon item={item} />
@@ -413,7 +413,7 @@ function ArchivedItemRow({
       {item.type === 'bookmark' ? (
         <button
           className="archive-item__main"
-          onClick={(event) => void openBookmark(item.url, event.metaKey || event.ctrlKey)}
+          onClick={() => void openBookmark(item.url)}
           title={`${item.title}\n${item.url}`}
         >
           {copy}
