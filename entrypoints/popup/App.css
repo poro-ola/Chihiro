@@ -53,10 +53,32 @@
   text-align: left;
 }
 
+.popup-actions {
+  display: grid;
+  gap: 8px;
+}
+
+.open-button--secondary {
+  color: #67665d;
+  background: #f7f2e8;
+  font-weight: 650;
+}
+
 .open-button:hover {
   color: #a43f2c;
   border-color: #d85d43;
   background: #f9eee7;
+}
+
+.popup .popup-error {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid #dfb7ad;
+  border-radius: 7px;
+  color: #9d3828;
+  background: #fff3ef;
+  font-size: 10px;
+  line-height: 1.5;
 }
 
 .popup footer {

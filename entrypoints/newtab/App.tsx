@@ -33,13 +33,15 @@ import {
   renameWorkspace,
   renameCollection,
   reorderCollections,
+  reorderWorkspaces,
   restoreItem,
   setActiveWorkspace,
   toggleCollection,
   unarchiveItem,
   updateBookmark,
+  updateBookmarkNote,
   updateNote,
-  updatePanelSetting,
+  updateAppSetting,
 } from '../../lib/db';
 import type {
   BoardItem,
@@ -52,7 +54,7 @@ import type {
   Workspace,
 } from '../../lib/types';
 import { Board } from './components/Board';
-import { BookmarkDialog, ConfirmDialog, NoteDialog } from './components/Dialogs';
+import { BookmarkDialog, BookmarkNoteDialog, ConfirmDialog, NoteDialog } from './components/Dialogs';
 import { OpenTabsPanel } from './components/OpenTabsPanel';
 import { SearchPalette } from './components/SearchPalette';
 import { SettingsPanel } from './components/SettingsPanel';
@@ -75,6 +77,7 @@ type ConfirmState = {
 type BookmarkDialogState = {
   collectionId: string;
   item?: BookmarkItem;
+  focusField?: 'url' | 'note';
 };
 
 const workspaceCollisionDetection: CollisionDetection = (args) => {
@@ -162,7 +165,7 @@ function App() {
   useEffect(() => {
     const narrowViewport = window.matchMedia('(max-width: 980px)');
     const collapseTabsOnNarrowScreens = (event: MediaQueryListEvent | MediaQueryList) => {
-      if (event.matches) void updatePanelSetting('rightPanelCollapsed', true);
+      if (event.matches) void updateAppSetting('rightPanelCollapsed', true);
     };
     collapseTabsOnNarrowScreens(narrowViewport);
     narrowViewport.addEventListener('change', collapseTabsOnNarrowScreens);
@@ -306,6 +309,7 @@ function App() {
       setDragLabel(item.type === 'bookmark' ? item.title : item.content || '空白记事');
     }
     if (data?.type === 'collection') setDragLabel((data.collection as Collection).name);
+    if (data?.type === 'workspace') setDragLabel((data.workspace as Workspace).name);
   };
 
   const handleDragOver = (event: DragOverEvent) => {
@@ -331,6 +335,13 @@ function App() {
     if (!activeData || !overData) return;
 
     try {
+      if (activeData.type === 'workspace' && overData.type === 'workspace') {
+        const activeWorkspace = activeData.workspace as Workspace;
+        const overWorkspace = overData.workspace as Workspace;
+        await reorderWorkspaces(activeWorkspace.id, overWorkspace.id);
+        return;
+      }
+
       if (activeData.type === 'collection' && overData.type === 'collection') {
         const activeCollection = activeData.collection as Collection;
         const overCollection = overData.collection as Collection;
@@ -442,7 +453,7 @@ function App() {
       onDragEnd={(event) => void handleDragEnd(event)}
       onDragCancel={() => setDragLabel('')}
     >
-      <div className={`app-shell ${settings?.leftPanelCollapsed ? 'has-collapsed-sidebar' : ''} ${settings?.rightPanelCollapsed ? 'has-collapsed-tabs' : ''}`}>
+      <div className={`app-shell ${settings?.leftPanelCollapsed ? 'has-collapsed-sidebar' : ''} ${settings?.rightPanelCollapsed ? 'has-collapsed-tabs' : ''} ${settings?.compactMode ? 'is-compact' : ''}`}>
         <Sidebar
           workspaces={workspaces}
           activeWorkspaceId={activeWorkspaceId}
@@ -463,7 +474,7 @@ function App() {
           }}
           onOpenSearch={() => setSearchOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
-          onToggleCollapsed={() => void updatePanelSetting('leftPanelCollapsed', !(settings?.leftPanelCollapsed || false))}
+          onToggleCollapsed={() => void updateAppSetting('leftPanelCollapsed', !(settings?.leftPanelCollapsed || false))}
         />
 
         <Board
@@ -472,6 +483,9 @@ function App() {
           items={activeItems}
           openArchiveCollectionIds={openArchiveCollectionIds}
           highlightedItemId={highlightedItemId}
+          showIntro={Boolean(settings && !settings.boardIntroDismissed)}
+          onDismissIntro={() => void updateAppSetting('boardIntroDismissed', true)
+            .catch((reason) => notify(reason instanceof Error ? reason.message : '无法保存提示设置', 'error'))}
           onAddCollection={async (name) => { await createCollection(activeWorkspaceId, name); notify('集合已创建'); }}
           onRenameCollection={async (id, name) => { await renameCollection(id, name); notify('集合已重命名'); }}
           onDeleteCollection={(collection) => {
@@ -492,6 +506,11 @@ function App() {
             })
             .catch((reason) => notify(reason instanceof Error ? reason.message : '无法添加记事', 'error'))}
           onEditBookmark={(item) => setBookmarkDialog({ collectionId: item.collectionId, item })}
+          onEditBookmarkNote={(item) => setBookmarkDialog({
+            collectionId: item.collectionId,
+            item,
+            focusField: 'note',
+          })}
           onEditNote={setNoteDialog}
           onOpenBookmarks={(collection, bookmarks) => void openBookmarks(bookmarks.map((item) => item.url))
             .then((opened) => notify(`已打开“${collection.name}”中的 ${opened} 个链接`))
@@ -511,18 +530,29 @@ function App() {
           tabs={openTabs}
           collapsed={settings?.rightPanelCollapsed || false}
           onActivate={(id) => void activateTab(id)}
-          onToggleCollapsed={() => void updatePanelSetting('rightPanelCollapsed', !(settings?.rightPanelCollapsed || false))}
+          onToggleCollapsed={() => void updateAppSetting('rightPanelCollapsed', !(settings?.rightPanelCollapsed || false))}
         />
       </div>
 
       <DragOverlay>{dragLabel ? <div className="drag-overlay"><span>拖动中</span>{dragLabel}</div> : null}</DragOverlay>
 
       <BookmarkDialog
-        open={Boolean(bookmarkDialog)}
+        open={Boolean(bookmarkDialog && bookmarkDialog.focusField !== 'note')}
         item={bookmarkDialog?.item}
+        focusField="url"
         collectionName={collectionMap.get(bookmarkDialog?.collectionId || '')?.name || '集合'}
         onClose={() => setBookmarkDialog(undefined)}
         onSave={saveBookmarkDialog}
+      />
+
+      <BookmarkNoteDialog
+        open={Boolean(bookmarkDialog?.item && bookmarkDialog.focusField === 'note')}
+        item={bookmarkDialog?.item}
+        onClose={() => setBookmarkDialog(undefined)}
+        onSave={async (note) => {
+          if (!bookmarkDialog?.item) return;
+          await updateBookmarkNote(bookmarkDialog.item.id, note);
+        }}
       />
 
       <NoteDialog
@@ -545,8 +575,13 @@ function App() {
       <SettingsPanel
         open={settingsOpen}
         counts={{ workspaces: workspaces.length, collections: collections.length, items: items.length }}
+        compactMode={settings?.compactMode ?? false}
         onClose={() => setSettingsOpen(false)}
         onNotify={notify}
+        onCompactModeChange={async (compactMode) => {
+          await updateAppSetting('compactMode', compactMode);
+          notify(compactMode ? '已切换为紧凑模式' : '已切换为标准模式');
+        }}
         onRequestClear={() => setConfirm({
           title: '清空全部本地数据？',
           description: '所有工作区、集合、书签、记事和设置都会被删除。请先导出 JSON 备份。',

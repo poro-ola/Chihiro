@@ -8,13 +8,14 @@ import type {
   NoteItem,
   Workspace,
 } from './types';
+import { BOOKMARK_NOTE_MAX_LENGTH } from './types';
 
 export const APP_VERSION = '0.1.0';
 export const SCHEMA_VERSION = 2;
 
 const APP_ROW_ID = 'app' as const;
 
-export class QianxunDatabase extends Dexie {
+export class ChihiroDatabase extends Dexie {
   workspaces!: Table<Workspace, string>;
   collections!: Table<Collection, string>;
   items!: Table<BoardItem, string>;
@@ -22,6 +23,7 @@ export class QianxunDatabase extends Dexie {
   appMeta!: Table<AppMeta, string>;
 
   constructor() {
+    // Keep the legacy storage key so upgrades continue reading existing local data.
     super('qianxun');
 
     this.version(1).stores({
@@ -42,7 +44,7 @@ export class QianxunDatabase extends Dexie {
   }
 }
 
-export const db = new QianxunDatabase();
+export const db = new ChihiroDatabase();
 
 function createId(prefix: string) {
   const uuid = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -51,6 +53,13 @@ function createId(prefix: string) {
 
 function now() {
   return new Date().toISOString();
+}
+
+function prepareBookmarkNote(value?: string) {
+  if ((value?.length ?? 0) > BOOKMARK_NOTE_MAX_LENGTH) {
+    throw new Error(`书签备注最多 ${BOOKMARK_NOTE_MAX_LENGTH.toLocaleString()} 字`);
+  }
+  return value?.trim() || undefined;
 }
 
 export function prepareUrl(value: string) {
@@ -121,9 +130,25 @@ export async function ensureSeedData() {
         activeWorkspaceId: workspaceId,
         leftPanelCollapsed: false,
         rightPanelCollapsed: false,
+        compactMode: false,
+        boardIntroDismissed: false,
+        contentNoteButtonRatio: 0.5,
       });
-    } else if (!(await db.workspaces.get(settings.activeWorkspaceId))) {
-      await db.settings.update(APP_ROW_ID, { activeWorkspaceId: workspaceId });
+    } else {
+      const updates: Partial<AppSettings> = {};
+      if (!(await db.workspaces.get(settings.activeWorkspaceId))) {
+        updates.activeWorkspaceId = workspaceId;
+      }
+      if (typeof settings.compactMode !== 'boolean') {
+        updates.compactMode = false;
+      }
+      if (typeof settings.boardIntroDismissed !== 'boolean') {
+        updates.boardIntroDismissed = false;
+      }
+      if (typeof settings.contentNoteButtonRatio !== 'number') {
+        updates.contentNoteButtonRatio = 0.5;
+      }
+      if (Object.keys(updates).length) await db.settings.update(APP_ROW_ID, updates);
     }
 
     const meta = await db.appMeta.get(APP_ROW_ID);
@@ -176,6 +201,21 @@ export async function renameWorkspace(id: string, name: string) {
   await db.workspaces.update(id, { name: cleanName, updatedAt: now() });
 }
 
+export async function reorderWorkspaces(activeId: string, overId: string) {
+  if (activeId === overId) return;
+  await db.transaction('rw', db.workspaces, async () => {
+    const entries = await db.workspaces.orderBy('order').toArray();
+    const from = entries.findIndex((entry) => entry.id === activeId);
+    const to = entries.findIndex((entry) => entry.id === overId);
+    if (from < 0 || to < 0) return;
+    const [moved] = entries.splice(from, 1);
+    if (!moved) return;
+    entries.splice(to, 0, moved);
+    const timestamp = now();
+    await db.workspaces.bulkPut(entries.map((entry, order) => ({ ...entry, order, updatedAt: timestamp })));
+  });
+}
+
 export async function deleteWorkspace(id: string) {
   await db.transaction('rw', db.workspaces, db.collections, db.items, db.settings, async () => {
     const collectionIds = (await db.collections.where('workspaceId').equals(id).toArray()).map(
@@ -196,8 +236,8 @@ export async function setActiveWorkspace(activeWorkspaceId: string) {
   await db.settings.update(APP_ROW_ID, { activeWorkspaceId });
 }
 
-export async function updatePanelSetting(
-  key: 'leftPanelCollapsed' | 'rightPanelCollapsed',
+export async function updateAppSetting(
+  key: 'leftPanelCollapsed' | 'rightPanelCollapsed' | 'compactMode' | 'boardIntroDismissed',
   value: boolean,
 ) {
   await db.settings.update(APP_ROW_ID, { [key]: value });
@@ -282,7 +322,7 @@ export async function createBookmark(
     title: input.title.trim() || new URL(url).hostname,
     url,
     normalizedUrl,
-    note: input.note?.trim() || undefined,
+    note: prepareBookmarkNote(input.note),
     faviconUrl: input.faviconUrl,
     order: 0,
     createdAt: timestamp,
@@ -326,9 +366,15 @@ export async function updateBookmark(
     title: input.title.trim() || new URL(url).hostname,
     url,
     normalizedUrl,
-    note: input.note?.trim() || undefined,
+    note: prepareBookmarkNote(input.note),
     updatedAt: now(),
   });
+}
+
+export async function updateBookmarkNote(id: string, note: string) {
+  const existing = await db.items.get(id);
+  if (!existing || existing.type !== 'bookmark') throw new Error('书签不存在');
+  await db.items.put({ ...existing, note: prepareBookmarkNote(note), updatedAt: now() });
 }
 
 export async function createNote(collectionId: string) {

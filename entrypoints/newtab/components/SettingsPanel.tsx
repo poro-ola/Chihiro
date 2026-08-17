@@ -1,19 +1,30 @@
 import { useRef, useState } from 'react';
-import { Database, Download, HardDrive, ShieldCheck, Trash2, Upload, X } from 'lucide-react';
+import { Database, Download, HardDrive, LayoutList, ShieldCheck, Trash2, Upload, X } from 'lucide-react';
 import { downloadBackup, restoreBackup } from '../../../lib/backup';
 
 interface SettingsPanelProps {
   open: boolean;
   counts: { workspaces: number; collections: number; items: number };
+  compactMode: boolean;
   onClose: () => void;
   onNotify: (message: string, tone?: 'success' | 'error') => void;
+  onCompactModeChange: (compactMode: boolean) => Promise<void>;
   onRequestClear: () => void;
 }
 
-export function SettingsPanel({ open, counts, onClose, onNotify, onRequestClear }: SettingsPanelProps) {
+export function SettingsPanel({
+  open,
+  counts,
+  compactMode,
+  onClose,
+  onNotify,
+  onCompactModeChange,
+  onRequestClear,
+}: SettingsPanelProps) {
   const fileInput = useRef<HTMLInputElement>(null);
   const [mode, setMode] = useState<'merge' | 'replace'>('merge');
   const [busy, setBusy] = useState(false);
+  const [layoutBusy, setLayoutBusy] = useState(false);
   const [pendingFile, setPendingFile] = useState<File>();
 
   if (!open) return null;
@@ -58,6 +69,32 @@ export function SettingsPanel({ open, counts, onClose, onNotify, onRequestClear 
 
         <section className="settings-section">
           <div className="settings-section__heading">
+            <LayoutList size={18} />
+            <div><h3>卡片布局</h3><p>调整集合内书签与记事的显示密度。</p></div>
+          </div>
+          <button
+            type="button"
+            className="settings-toggle"
+            role="switch"
+            aria-checked={compactMode}
+            disabled={layoutBusy}
+            onClick={() => {
+              setLayoutBusy(true);
+              void onCompactModeChange(!compactMode)
+                .catch((reason) => onNotify(reason instanceof Error ? reason.message : '无法保存布局设置', 'error'))
+                .finally(() => setLayoutBusy(false));
+            }}
+          >
+            <span className="settings-toggle__copy">
+              <strong>紧凑模式</strong>
+              <span>卡片仅显示图标与标题，在同一屏容纳更多资料。</span>
+            </span>
+            <span className="settings-switch" aria-hidden="true"><span /></span>
+          </button>
+        </section>
+
+        <section className="settings-section">
+          <div className="settings-section__heading">
             <Database size={18} />
             <div><h3>JSON 备份</h3><p>导出包含全部数据、顺序和界面状态的完整备份。</p></div>
           </div>
@@ -73,7 +110,7 @@ export function SettingsPanel({ open, counts, onClose, onNotify, onRequestClear 
             }}
           >
             <Download size={18} />
-            <span><strong>导出备份</strong><em>下载 qianxun-backup-*.json</em></span>
+            <span><strong>导出备份</strong><em>下载 chihiro-backup-*.json</em></span>
           </button>
         </section>
 

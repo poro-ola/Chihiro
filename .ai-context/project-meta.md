@@ -16,7 +16,7 @@
 
 ## 项目事实
 
-- 项目名：`qianxun`
+- 项目名：`chihiro`（工作区目录仍为 `qianxun`）
 - 项目类型：Chrome/Chromium 浏览器扩展
 - 产品入口：当前为 WXT 默认 popup；PRD 目标为新标签页工作台
 - 产品需求：见 `docs/PRD.md`

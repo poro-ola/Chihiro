@@ -11,11 +11,13 @@ import {
   FolderOpen,
   GripVertical,
   Link2,
+  MessageSquareText,
   MoreHorizontal,
   Pencil,
   Plus,
   StickyNote,
   Trash2,
+  X,
 } from 'lucide-react';
 import { openBookmark } from '../../../lib/browser-tabs';
 import type {
@@ -32,6 +34,8 @@ interface BoardProps {
   items: BoardItem[];
   openArchiveCollectionIds: ReadonlySet<string>;
   highlightedItemId?: string;
+  showIntro: boolean;
+  onDismissIntro: () => void;
   onAddCollection: (name: string) => Promise<void>;
   onRenameCollection: (id: string, name: string) => Promise<void>;
   onDeleteCollection: (collection: Collection) => void;
@@ -39,6 +43,7 @@ interface BoardProps {
   onAddBookmark: (collectionId: string) => void;
   onAddNote: (collectionId: string) => void;
   onEditBookmark: (item: BookmarkItem) => void;
+  onEditBookmarkNote: (item: BookmarkItem) => void;
   onEditNote: (item: NoteItem) => void;
   onOpenBookmarks: (collection: Collection, bookmarks: BookmarkItem[]) => void;
   onArchiveItem: (item: BoardItem) => void;
@@ -122,6 +127,7 @@ function SortableBoardItem({
   collections,
   highlighted,
   onEditBookmark,
+  onEditBookmarkNote,
   onEditNote,
   onArchive,
   onDelete,
@@ -131,6 +137,7 @@ function SortableBoardItem({
   collections: Collection[];
   highlighted: boolean;
   onEditBookmark: (item: BookmarkItem) => void;
+  onEditBookmarkNote: (item: BookmarkItem) => void;
   onEditNote: (item: NoteItem) => void;
   onArchive: (item: BoardItem) => void;
   onDelete: (item: BoardItem) => void;
@@ -173,9 +180,19 @@ function SortableBoardItem({
 
       <div className="board-item__actions">
         {item.type === 'bookmark' && (
-          <button className="icon-button" onClick={() => onEditBookmark(item)} aria-label="编辑书签">
-            <Pencil size={14} />
-          </button>
+          <>
+            <button className="icon-button" onClick={() => onEditBookmark(item)} aria-label="编辑书签">
+              <Pencil size={14} />
+            </button>
+            <button
+              className={`icon-button bookmark-note-action ${item.note ? 'has-note' : ''}`}
+              onClick={() => onEditBookmarkNote(item)}
+              aria-label={item.note ? '编辑备注' : '添加备注'}
+              title={item.note ? '编辑备注' : '添加备注'}
+            >
+              <MessageSquareText size={14} />
+            </button>
+          </>
         )}
         <MoveSelect item={item} collections={collections} onMove={onMove} />
         <button className="icon-button" onClick={() => onArchive(item)} aria-label="归档卡片" title="归档">
@@ -202,6 +219,7 @@ function SortableCollection({
   onAddBookmark,
   onAddNote,
   onEditBookmark,
+  onEditBookmarkNote,
   onEditNote,
   onOpenBookmarks,
   onArchiveItem,
@@ -222,6 +240,7 @@ function SortableCollection({
   onAddBookmark: (collectionId: string) => void;
   onAddNote: (collectionId: string) => void;
   onEditBookmark: (item: BookmarkItem) => void;
+  onEditBookmarkNote: (item: BookmarkItem) => void;
   onEditNote: (item: NoteItem) => void;
   onOpenBookmarks: (collection: Collection, bookmarks: BookmarkItem[]) => void;
   onArchiveItem: (item: BoardItem) => void;
@@ -320,6 +339,7 @@ function SortableCollection({
                   collections={collections}
                   highlighted={item.id === highlightedItemId}
                   onEditBookmark={onEditBookmark}
+                  onEditBookmarkNote={onEditBookmarkNote}
                   onEditNote={onEditNote}
                   onArchive={onArchiveItem}
                   onDelete={onDeleteItem}
@@ -479,6 +499,8 @@ export function Board({
   items,
   openArchiveCollectionIds,
   highlightedItemId,
+  showIntro,
+  onDismissIntro,
   onAddCollection,
   onRenameCollection,
   onDeleteCollection,
@@ -486,6 +508,7 @@ export function Board({
   onAddBookmark,
   onAddNote,
   onEditBookmark,
+  onEditBookmarkNote,
   onEditNote,
   onOpenBookmarks,
   onArchiveItem,
@@ -550,10 +573,21 @@ export function Board({
         )}
       </header>
 
-      <div className="board-intro">
-        <div className="board-intro__icon"><FileText size={17} /></div>
-        <p><strong>把浏览变成资料。</strong> 从右侧拖入当前标签，也可以在集合中直接补充链接和文字。</p>
-      </div>
+      {showIntro && (
+        <div className="board-intro">
+          <div className="board-intro__icon"><FileText size={17} /></div>
+          <p><strong>把浏览变成资料。</strong> 从右侧拖入当前标签，也可以在集合中直接补充链接和文字。</p>
+          <button
+            type="button"
+            className="board-intro__close"
+            onClick={onDismissIntro}
+            aria-label="关闭使用提示"
+            title="不再显示"
+          >
+            <X size={15} />
+          </button>
+        </div>
+      )}
 
       <SortableContext items={collections.map((collection) => `collection:${collection.id}`)} strategy={verticalListSortingStrategy}>
         <div className="collections-list">
@@ -572,6 +606,7 @@ export function Board({
               onAddBookmark={onAddBookmark}
               onAddNote={onAddNote}
               onEditBookmark={onEditBookmark}
+              onEditBookmarkNote={onEditBookmarkNote}
               onEditNote={onEditNote}
               onOpenBookmarks={onOpenBookmarks}
               onArchiveItem={onArchiveItem}

@@ -17,7 +17,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   override componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error('Qianxun render failed', error, info.componentStack);
+    console.error('Chihiro render failed', error, info.componentStack);
   }
 
   override render() {

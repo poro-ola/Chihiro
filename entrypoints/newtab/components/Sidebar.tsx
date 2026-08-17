@@ -1,9 +1,12 @@
 import { useState } from 'react';
+import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import {
   Archive,
   ChevronLeft,
   ChevronRight,
   Folder,
+  GripVertical,
   Pencil,
   Plus,
   Search,
@@ -23,6 +26,115 @@ interface SidebarProps {
   onOpenSearch: () => void;
   onOpenSettings: () => void;
   onToggleCollapsed: () => void;
+}
+
+interface WorkspaceRowProps {
+  workspace: Workspace;
+  active: boolean;
+  collapsed: boolean;
+  editing: boolean;
+  editingName: string;
+  canDelete: boolean;
+  onSelect: () => void;
+  onStartRename: () => void;
+  onEditingNameChange: (name: string) => void;
+  onCommitRename: () => void;
+  onDelete: () => void;
+}
+
+function SortableWorkspaceRow({
+  workspace,
+  active,
+  collapsed,
+  editing,
+  editingName,
+  canDelete,
+  onSelect,
+  onStartRename,
+  onEditingNameChange,
+  onCommitRename,
+  onDelete,
+}: WorkspaceRowProps) {
+  const {
+    attributes,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: `workspace:${workspace.id}`,
+    data: { type: 'workspace', workspace },
+    disabled: editing,
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`workspace-row ${active ? 'is-active' : ''} ${editing ? 'is-editing' : ''} ${isDragging ? 'is-dragging' : ''}`}
+      style={{ transform: CSS.Transform.toString(transform), transition }}
+      title={collapsed ? `拖动调整顺序 · ${workspace.name}` : '按住卡片任意位置拖动调整顺序'}
+      onPointerDown={(event) => listeners?.onPointerDown?.(event)}
+    >
+      <button
+        ref={setActivatorNodeRef}
+        className="workspace-drag-handle"
+        aria-label={`拖动${workspace.name}`}
+        disabled={editing}
+        onKeyDown={(event) => listeners?.onKeyDown?.(event)}
+        {...attributes}
+      >
+        <GripVertical size={14} />
+      </button>
+      {editing && !collapsed ? (
+        <form
+          className="workspace-rename"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onCommitRename();
+          }}
+        >
+          <input
+            value={editingName}
+            onChange={(event) => onEditingNameChange(event.target.value)}
+            autoFocus
+            maxLength={40}
+          />
+        </form>
+      ) : (
+        <button
+          className="workspace-row__main"
+          onClick={onSelect}
+          onDoubleClick={onStartRename}
+          title={workspace.name}
+        >
+          <Folder size={17} />
+          {!collapsed && <span>{workspace.name}</span>}
+        </button>
+      )}
+      {!collapsed && (
+        <div className="workspace-row__actions">
+          <button
+            className="workspace-row__action"
+            aria-label={`重命名${workspace.name}`}
+            onClick={onStartRename}
+          >
+            <Pencil size={13} />
+          </button>
+          {canDelete && (
+            <button
+              className="workspace-row__action"
+              aria-label={`删除${workspace.name}`}
+              onClick={onDelete}
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function Sidebar({
@@ -63,7 +175,7 @@ export function Sidebar({
         {!collapsed && (
           <div className="brand-copy">
             <strong>千寻</strong>
-            <span>Qianxun</span>
+            <span>Chihiro</span>
           </div>
         )}
         <button className="icon-button sidebar-collapse" onClick={onToggleCollapsed} aria-label={collapsed ? '展开侧栏' : '折叠侧栏'}>
@@ -92,16 +204,28 @@ export function Sidebar({
         )}
 
         <nav className="workspace-list">
-          {workspaces.map((workspace) => (
-            <div
-              className={`workspace-row ${workspace.id === activeWorkspaceId ? 'is-active' : ''}`}
-              key={workspace.id}
-            >
-              {editingId === workspace.id && !collapsed ? (
-                <form
-                  className="workspace-rename"
-                  onSubmit={(event) => {
-                    event.preventDefault();
+          <SortableContext
+            items={workspaces.map((workspace) => `workspace:${workspace.id}`)}
+            strategy={verticalListSortingStrategy}
+          >
+            {workspaces.map((workspace) => {
+              const startRename = () => {
+                setEditingId(workspace.id);
+                setEditingName(workspace.name);
+              };
+              return (
+                <SortableWorkspaceRow
+                  key={workspace.id}
+                  workspace={workspace}
+                  active={workspace.id === activeWorkspaceId}
+                  collapsed={collapsed}
+                  editing={editingId === workspace.id}
+                  editingName={editingName}
+                  canDelete={workspaces.length > 1}
+                  onSelect={() => onSelect(workspace.id)}
+                  onStartRename={startRename}
+                  onEditingNameChange={setEditingName}
+                  onCommitRename={() => {
                     void onRename(workspace.id, editingName)
                       .then(() => {
                         setEditingId(undefined);
@@ -109,48 +233,11 @@ export function Sidebar({
                       })
                       .catch((reason) => setError(reason instanceof Error ? reason.message : '重命名失败'));
                   }}
-                >
-                  <input value={editingName} onChange={(event) => setEditingName(event.target.value)} autoFocus maxLength={40} />
-                </form>
-              ) : (
-                <button
-                  className="workspace-row__main"
-                  onClick={() => onSelect(workspace.id)}
-                  onDoubleClick={() => {
-                    setEditingId(workspace.id);
-                    setEditingName(workspace.name);
-                  }}
-                  title={workspace.name}
-                >
-                  <Folder size={17} />
-                  {!collapsed && <span>{workspace.name}</span>}
-                </button>
-              )}
-              {!collapsed && (
-                <div className="workspace-row__actions">
-                  <button
-                    className="workspace-row__action"
-                    aria-label={`重命名${workspace.name}`}
-                    onClick={() => {
-                      setEditingId(workspace.id);
-                      setEditingName(workspace.name);
-                    }}
-                  >
-                    <Pencil size={13} />
-                  </button>
-                  {workspaces.length > 1 && (
-                    <button
-                      className="workspace-row__action"
-                      aria-label={`删除${workspace.name}`}
-                      onClick={() => onDelete(workspace)}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
+                  onDelete={() => onDelete(workspace)}
+                />
+              );
+            })}
+          </SortableContext>
         </nav>
 
         {collapsed && (

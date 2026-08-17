@@ -13,5 +13,18 @@ export default defineConfig({
     name: '千寻 · 标签与资料工作台',
     description: '把当前标签、书签和记事整理进一个本地优先的资料工作台。',
     permissions: ['tabs'],
+    action: {
+      default_title: '打开千寻主界面',
+    },
+  },
+  hooks: {
+    'build:manifestGenerated': (_wxt, manifest) => {
+      if (manifest.action) {
+        delete manifest.action.default_popup;
+        manifest.action.default_title = '打开千寻主界面';
+      }
+      delete manifest.side_panel;
+      manifest.permissions = manifest.permissions?.filter((permission) => permission !== 'sidePanel');
+    },
   },
 });

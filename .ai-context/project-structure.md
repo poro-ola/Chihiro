@@ -6,7 +6,9 @@ qianxun/
 ├── docs/                   # 产品文档
 ├── entrypoints/            # WXT 扩展入口
 │   ├── newtab/             # React 新标签页工作台与界面组件
-│   └── popup/              # 扩展图标快捷入口
+│   ├── background.ts       # Content Script 与扩展 IndexedDB 的消息桥接
+│   ├── notes.content/      # 网页右侧悬浮备注图标与编辑面板
+│   └── popup/              # 网页备注与工作台快捷入口
 ├── lib/                    # 领域类型、Dexie 数据层、备份和标签 API
 ├── public/                 # 原样复制到扩展包的图标与资源
 ├── package.json            # 脚本与依赖
@@ -18,8 +20,9 @@ qianxun/
 
 - `entrypoints/newtab/main.tsx`：新标签页 React 根入口。
 - `entrypoints/newtab/App.tsx`：工作台状态协调、搜索和拖拽入口。
-- `entrypoints/popup/main.tsx`：React 根入口。
-- `entrypoints/popup/App.tsx`：打开新标签页工作台的快捷入口。
+- `entrypoints/background.ts`：按规范化 URL 查询/保存网页备注，持久化悬浮按钮位置，并在点击工具栏图标时打开主工作台。
+- `entrypoints/notes.content/`：通过 Shadow DOM 在 HTTP/HTTPS 页面注入可上下拖动的悬浮图标和备注编辑面板。
+- `entrypoints/popup/`：保留网页备注和新标签页工作台的快捷入口实现；生产清单移除 `default_popup`，工具栏图标由后台直接打开主工作台。
 
 ## 当前模块状态
 

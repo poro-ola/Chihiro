@@ -1,6 +1,6 @@
 import { exportDB, importInto } from 'dexie-export-import';
 import { APP_VERSION, SCHEMA_VERSION, db, ensureSeedData } from './db';
-import type { QianxunBackup } from './types';
+import type { ChihiroBackup } from './types';
 
 function pad(value: number) {
   return value.toString().padStart(2, '0');
@@ -8,7 +8,7 @@ function pad(value: number) {
 
 function backupFileName(date: Date) {
   return [
-    'qianxun-backup-',
+    'chihiro-backup-',
     date.getFullYear(),
     '-',
     pad(date.getMonth() + 1),
@@ -29,8 +29,8 @@ export async function createBackup() {
     await Promise.all(db.tables.map(async (table) => [table.name, await table.count()] as const)),
   );
   const exportedAt = new Date();
-  const backup: QianxunBackup = {
-    format: 'qianxun-backup',
+  const backup: ChihiroBackup = {
+    format: 'chihiro-backup',
     formatVersion: 1,
     appVersion: APP_VERSION,
     schemaVersion: SCHEMA_VERSION,
@@ -55,10 +55,11 @@ export async function downloadBackup() {
   window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
 }
 
-function assertBackup(value: unknown): asserts value is QianxunBackup {
+function assertBackup(value: unknown): asserts value is ChihiroBackup {
   if (!value || typeof value !== 'object') throw new Error('备份文件内容无效');
-  const candidate = value as Partial<QianxunBackup>;
-  if (candidate.format !== 'qianxun-backup' || candidate.formatVersion !== 1) {
+  const candidate = value as Partial<ChihiroBackup>;
+  const supportedFormat = candidate.format === 'chihiro-backup' || candidate.format === 'qianxun-backup';
+  if (!supportedFormat || candidate.formatVersion !== 1) {
     throw new Error('不是受支持的千寻备份文件');
   }
   if (!candidate.database || typeof candidate.database !== 'object') {

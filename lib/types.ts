@@ -1,5 +1,7 @@
 export type ItemType = 'bookmark' | 'note';
 
+export const BOOKMARK_NOTE_MAX_LENGTH = 2_000;
+
 export interface Workspace {
   id: string;
   name: string;
@@ -48,6 +50,9 @@ export interface AppSettings {
   activeWorkspaceId: string;
   leftPanelCollapsed: boolean;
   rightPanelCollapsed: boolean;
+  compactMode: boolean;
+  boardIntroDismissed: boolean;
+  contentNoteButtonRatio: number;
 }
 
 export interface AppMeta {
@@ -97,8 +102,8 @@ export type SearchResult =
       tabId: number;
     };
 
-export interface QianxunBackup {
-  format: 'qianxun-backup';
+export interface ChihiroBackup {
+  format: 'chihiro-backup' | 'qianxun-backup';
   formatVersion: 1;
   appVersion: string;
   schemaVersion: number;

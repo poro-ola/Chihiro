@@ -5,7 +5,7 @@ const previewTabs: OpenTab[] = [
     id: -1,
     windowId: -1,
     title: '千寻 · 标签与资料工作台',
-    url: 'https://example.com/qianxun',
+    url: 'https://example.com/chihiro',
     active: true,
     pinned: false,
   },
