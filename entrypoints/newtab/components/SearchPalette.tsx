@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowUpRight, Folder, Link2, PanelsTopLeft, Search, StickyNote, X } from 'lucide-react';
+import { ArrowUpRight, Folder, Link2, PanelsTopLeft, Search, StickyNote, Terminal, X } from 'lucide-react';
 import type { SearchCategory, SearchResult } from '../../../lib/types';
 
 interface SearchPaletteProps {
@@ -17,6 +17,7 @@ const categories: { id: SearchCategory; label: string }[] = [
   { id: 'all', label: '全部' },
   { id: 'bookmark', label: '书签' },
   { id: 'note', label: '记事' },
+  { id: 'request', label: '请求' },
   { id: 'collection', label: '集合' },
   { id: 'tab', label: '当前标签' },
 ];
@@ -24,6 +25,7 @@ const categories: { id: SearchCategory; label: string }[] = [
 function ResultIcon({ type }: { type: SearchResult['type'] }) {
   if (type === 'bookmark') return <Link2 size={17} />;
   if (type === 'note') return <StickyNote size={17} />;
+  if (type === 'request') return <Terminal size={17} />;
   if (type === 'collection') return <Folder size={17} />;
   return <PanelsTopLeft size={17} />;
 }
@@ -123,7 +125,7 @@ export function SearchPalette({
                   <span><Highlight text={result.subtitle} query={query} /></span>
                 </span>
                 <span className="search-result__type">
-                  {result.type === 'bookmark' ? '书签' : result.type === 'note' ? '记事' : result.type === 'collection' ? '集合' : '标签'}
+                  {result.type === 'bookmark' ? '书签' : result.type === 'note' ? '记事' : result.type === 'request' ? '请求' : result.type === 'collection' ? '集合' : '标签'}
                 </span>
                 <ArrowUpRight size={15} />
               </button>

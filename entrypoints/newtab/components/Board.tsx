@@ -14,8 +14,10 @@ import {
   MessageSquareText,
   MoreHorizontal,
   Pencil,
+  Play,
   Plus,
   StickyNote,
+  Terminal,
   Trash2,
   X,
 } from 'lucide-react';
@@ -25,6 +27,7 @@ import type {
   BookmarkItem,
   Collection,
   NoteItem,
+  RequestItem,
   Workspace,
 } from '../../../lib/types';
 
@@ -42,9 +45,11 @@ interface BoardProps {
   onToggleCollection: (id: string, collapsed: boolean) => void;
   onAddBookmark: (collectionId: string) => void;
   onAddNote: (collectionId: string) => void;
+  onAddRequest: (collectionId: string) => void;
   onEditBookmark: (item: BookmarkItem) => void;
   onEditBookmarkNote: (item: BookmarkItem) => void;
   onEditNote: (item: NoteItem) => void;
+  onEditRequest: (item: RequestItem) => void;
   onOpenBookmarks: (collection: Collection, bookmarks: BookmarkItem[]) => void;
   onArchiveItem: (item: BoardItem) => void;
   onRestoreArchivedItem: (item: BoardItem) => void;
@@ -122,6 +127,20 @@ function NoteCard({ item, onEdit }: { item: NoteItem; onEdit: (item: NoteItem) =
   );
 }
 
+function RequestCard({ item, onEdit }: { item: RequestItem; onEdit: (item: RequestItem) => void }) {
+  const detail = item.command.trim().split(/\s+/).slice(0, 5).join(' ') || '点击配置 cURL 请求';
+  return (
+    <button className="request-card__main" onClick={() => onEdit(item)} title="点击编辑并执行请求">
+      <span className="request-card__icon" aria-hidden="true"><Terminal size={16} /></span>
+      <span className="request-card__copy">
+        <strong>{item.title}</strong>
+        <span>{detail}</span>
+      </span>
+      <Play size={14} className="request-card__play-icon" aria-hidden="true" />
+    </button>
+  );
+}
+
 function SortableBoardItem({
   item,
   collections,
@@ -129,6 +148,7 @@ function SortableBoardItem({
   onEditBookmark,
   onEditBookmarkNote,
   onEditNote,
+  onEditRequest,
   onArchive,
   onDelete,
   onMove,
@@ -139,6 +159,7 @@ function SortableBoardItem({
   onEditBookmark: (item: BookmarkItem) => void;
   onEditBookmarkNote: (item: BookmarkItem) => void;
   onEditNote: (item: NoteItem) => void;
+  onEditRequest: (item: RequestItem) => void;
   onArchive: (item: BoardItem) => void;
   onDelete: (item: BoardItem) => void;
   onMove: (itemId: string, collectionId: string) => void;
@@ -174,8 +195,10 @@ function SortableBoardItem({
           </span>
           <ExternalLink size={15} className="external-icon" />
         </button>
-      ) : (
+      ) : item.type === 'note' ? (
         <NoteCard item={item} onEdit={onEditNote} />
+      ) : (
+        <RequestCard item={item} onEdit={onEditRequest} />
       )}
 
       <div className="board-item__actions">
@@ -193,6 +216,11 @@ function SortableBoardItem({
               <MessageSquareText size={14} />
             </button>
           </>
+        )}
+        {item.type === 'request' && (
+          <button className="icon-button" onClick={() => onEditRequest(item)} aria-label="编辑工作流请求">
+            <Pencil size={14} />
+          </button>
         )}
         <MoveSelect item={item} collections={collections} onMove={onMove} />
         <button className="icon-button" onClick={() => onArchive(item)} aria-label="归档卡片" title="归档">
@@ -218,9 +246,11 @@ function SortableCollection({
   onToggle,
   onAddBookmark,
   onAddNote,
+  onAddRequest,
   onEditBookmark,
   onEditBookmarkNote,
   onEditNote,
+  onEditRequest,
   onOpenBookmarks,
   onArchiveItem,
   onRestoreArchivedItem,
@@ -239,9 +269,11 @@ function SortableCollection({
   onToggle: (id: string, collapsed: boolean) => void;
   onAddBookmark: (collectionId: string) => void;
   onAddNote: (collectionId: string) => void;
+  onAddRequest: (collectionId: string) => void;
   onEditBookmark: (item: BookmarkItem) => void;
   onEditBookmarkNote: (item: BookmarkItem) => void;
   onEditNote: (item: NoteItem) => void;
+  onEditRequest: (item: RequestItem) => void;
   onOpenBookmarks: (collection: Collection, bookmarks: BookmarkItem[]) => void;
   onArchiveItem: (item: BoardItem) => void;
   onRestoreArchivedItem: (item: BoardItem) => void;
@@ -319,6 +351,9 @@ function SortableCollection({
           <button className="text-action" onClick={() => onAddNote(collection.id)}>
             <StickyNote size={15} /> 记事
           </button>
+          <button className="text-action" onClick={() => onAddRequest(collection.id)}>
+            <Terminal size={15} /> 请求
+          </button>
           <button className="icon-button" onClick={() => setRenaming(true)} aria-label="重命名集合">
             <Pencil size={14} />
           </button>
@@ -341,6 +376,7 @@ function SortableCollection({
                   onEditBookmark={onEditBookmark}
                   onEditBookmarkNote={onEditBookmarkNote}
                   onEditNote={onEditNote}
+                  onEditRequest={onEditRequest}
                   onArchive={onArchiveItem}
                   onDelete={onDeleteItem}
                   onMove={onMoveItem}
@@ -349,7 +385,7 @@ function SortableCollection({
               {!items.length && (
                 <div className="collection-empty">
                   <FileText size={18} />
-                  <span>拖入标签，或添加链接与记事</span>
+                  <span>拖入标签，或添加链接、记事与请求</span>
                 </div>
               )}
             </div>
@@ -385,17 +421,25 @@ function ArchivedItemRow({
 }) {
   const title = item.type === 'bookmark'
     ? item.title
-    : item.content.trim().split('\n')[0] || '空白记事';
+    : item.type === 'note'
+      ? item.content.trim().split('\n')[0] || '空白记事'
+      : item.title;
   const detail = item.type === 'bookmark'
     ? hostOf(item.url)
-    : item.content.trim().split('\n').slice(1).join(' ') || '记事';
+    : item.type === 'note'
+      ? item.content.trim().split('\n').slice(1).join(' ') || '记事'
+      : item.command.trim().split(/\s+/).slice(0, 4).join(' ') || 'cURL 请求';
   const copy = (
     <>
       {item.type === 'bookmark' ? (
         <Favicon item={item} />
-      ) : (
+      ) : item.type === 'note' ? (
         <span className="archive-item__icon archive-item__icon--note" aria-hidden="true">
           <StickyNote size={15} />
+        </span>
+      ) : (
+        <span className="archive-item__icon archive-item__icon--request" aria-hidden="true">
+          <Terminal size={15} />
         </span>
       )}
       <span className="archive-item__copy">
@@ -507,9 +551,11 @@ export function Board({
   onToggleCollection,
   onAddBookmark,
   onAddNote,
+  onAddRequest,
   onEditBookmark,
   onEditBookmarkNote,
   onEditNote,
+  onEditRequest,
   onOpenBookmarks,
   onArchiveItem,
   onRestoreArchivedItem,
@@ -605,9 +651,11 @@ export function Board({
               onToggle={onToggleCollection}
               onAddBookmark={onAddBookmark}
               onAddNote={onAddNote}
+              onAddRequest={onAddRequest}
               onEditBookmark={onEditBookmark}
               onEditBookmarkNote={onEditBookmarkNote}
               onEditNote={onEditNote}
+              onEditRequest={onEditRequest}
               onOpenBookmarks={onOpenBookmarks}
               onArchiveItem={onArchiveItem}
               onRestoreArchivedItem={onRestoreArchivedItem}

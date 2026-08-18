@@ -1,6 +1,7 @@
-export type ItemType = 'bookmark' | 'note';
+export type ItemType = 'bookmark' | 'note' | 'request';
 
 export const BOOKMARK_NOTE_MAX_LENGTH = 2_000;
+export const REQUEST_COMMAND_MAX_LENGTH = 20_000;
 
 export interface Workspace {
   id: string;
@@ -43,7 +44,13 @@ export interface NoteItem extends BaseItem {
   content: string;
 }
 
-export type BoardItem = BookmarkItem | NoteItem;
+export interface RequestItem extends BaseItem {
+  type: 'request';
+  title: string;
+  command: string;
+}
+
+export type BoardItem = BookmarkItem | NoteItem | RequestItem;
 
 export interface AppSettings {
   id: 'app';
@@ -73,12 +80,12 @@ export interface OpenTab {
   pinned: boolean;
 }
 
-export type SearchCategory = 'all' | 'bookmark' | 'note' | 'collection' | 'tab';
+export type SearchCategory = 'all' | 'bookmark' | 'note' | 'request' | 'collection' | 'tab';
 
 export type SearchResult =
   | {
       id: string;
-      type: 'bookmark' | 'note';
+      type: 'bookmark' | 'note' | 'request';
       title: string;
       subtitle: string;
       workspaceId: string;

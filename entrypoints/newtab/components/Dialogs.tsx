@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Link2, StickyNote, X } from 'lucide-react';
-import { BOOKMARK_NOTE_MAX_LENGTH, type BookmarkItem, type NoteItem } from '../../../lib/types';
+import { AlertTriangle, Check, Copy, Link2, Play, StickyNote, Terminal, X } from 'lucide-react';
+import { CURL_MESSAGE, type CurlExecutionResult } from '../../../lib/curl';
+import {
+  BOOKMARK_NOTE_MAX_LENGTH,
+  REQUEST_COMMAND_MAX_LENGTH,
+  type BookmarkItem,
+  type NoteItem,
+  type RequestItem,
+} from '../../../lib/types';
 
 interface BookmarkDialogProps {
   open: boolean;
@@ -324,6 +331,172 @@ export function NoteDialog({ open, item, collectionName, onClose, onSave }: Note
             </div>
           </footer>
         </form>
+      </section>
+    </div>
+  );
+}
+
+interface RequestDialogProps {
+  open: boolean;
+  item?: RequestItem;
+  collectionName: string;
+  onClose: () => void;
+  onSave: (input: { title: string; command: string }) => Promise<void>;
+}
+
+export function RequestDialog({ open, item, collectionName, onClose, onSave }: RequestDialogProps) {
+  const [title, setTitle] = useState('');
+  const [command, setCommand] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [executing, setExecuting] = useState(false);
+  const [result, setResult] = useState<CurlExecutionResult>();
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setTitle(item?.title || '未命名请求');
+    setCommand(item?.command || '');
+    setError('');
+    setResult(undefined);
+    setCopied(false);
+  }, [item, open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [onClose, open]);
+
+  if (!open) return null;
+
+  const save = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      await onSave({ title, command });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '保存失败');
+      throw reason;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const execute = async () => {
+    setExecuting(true);
+    setError('');
+    setResult(undefined);
+    try {
+      await save();
+      const response = await browser.runtime.sendMessage({ type: CURL_MESSAGE.execute, command }) as CurlExecutionResult;
+      setResult(response);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : '请求执行失败');
+    } finally {
+      setExecuting(false);
+    }
+  };
+
+  const copyResult = async () => {
+    if (!result) return;
+    const output = result.error || [
+      `${result.status || ''} ${result.statusText || ''}`.trim(),
+      ...(result.headers || []).map(([name, value]) => `${name}: ${value}`),
+      '',
+      result.body || '',
+    ].join('\n');
+    try {
+      await navigator.clipboard.writeText(output);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1_500);
+    } catch {
+      setError('无法复制结果，请检查浏览器剪贴板权限');
+    }
+  };
+
+  return (
+    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className="dialog request-dialog" role="dialog" aria-modal="true" aria-labelledby="request-dialog-title">
+        <header className="dialog__header">
+          <div className="dialog__icon request-dialog__icon"><Terminal size={19} /></div>
+          <div>
+            <span className="eyebrow">{collectionName}</span>
+            <h2 id="request-dialog-title">工作流请求</h2>
+          </div>
+          <button className="icon-button" onClick={onClose} aria-label="关闭请求卡片"><X size={18} /></button>
+        </header>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void save().then(onClose).catch(() => undefined);
+          }}
+        >
+          <label className="field">
+            <span>名称</span>
+            <input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={200} autoFocus />
+          </label>
+          <label className="field request-dialog__command-field">
+            <span>
+              cURL 请求
+              <em>{command.length.toLocaleString()} / {REQUEST_COMMAND_MAX_LENGTH.toLocaleString()}</em>
+            </span>
+            <textarea
+              value={command}
+              onChange={(event) => setCommand(event.target.value.slice(0, REQUEST_COMMAND_MAX_LENGTH))}
+              onKeyDown={(event) => {
+                if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+                  event.preventDefault();
+                  void execute();
+                }
+              }}
+              placeholder={'curl -X POST https://api.example.com/items \\\n+  -H "Content-Type: application/json" \\\n+  -d \'{"name":"示例"}\''}
+              spellCheck={false}
+              aria-label="cURL 请求"
+              maxLength={REQUEST_COMMAND_MAX_LENGTH}
+            />
+          </label>
+          <p className="request-dialog__hint">命令仅保存在本地。执行不会携带浏览器 Cookie；包含 Token、密码等凭据时请谨慎保存。</p>
+          {error && <p className="dialog-error">{error}</p>}
+          <footer className="dialog__footer request-dialog__footer">
+            <span>支持常用 -X、-H、-d、--json、-u、-L 与 --max-time</span>
+            <div>
+              <button type="button" className="secondary-button" onClick={onClose}>取消</button>
+              <button type="button" className="secondary-button" onClick={() => void execute()} disabled={saving || executing}>
+                <Play size={14} /> {executing ? '执行中…' : '保存并执行'}
+              </button>
+              <button type="submit" className="primary-button" disabled={saving || executing}>{saving ? '保存中…' : '保存'}</button>
+            </div>
+          </footer>
+        </form>
+        {result && (
+          <section className={`request-result ${result.ok ? 'is-success' : 'is-error'}`} aria-live="polite">
+            <header>
+              <div>
+                <strong>{result.error || `${result.status} ${result.statusText || ''}`}</strong>
+                {result.durationMs !== undefined && <span>{result.durationMs} ms{result.finalUrl ? ` · ${result.finalUrl}` : ''}</span>}
+              </div>
+              <button type="button" className="icon-button" onClick={() => void copyResult()} aria-label="复制执行结果" title="复制执行结果">
+                {copied ? <Check size={15} /> : <Copy size={15} />}
+              </button>
+            </header>
+            {!result.error && (
+              <>
+                {result.headers && result.headers.length > 0 && (
+                  <details className="request-result__headers">
+                    <summary>响应头 · {result.headers.length}</summary>
+                    <pre>{result.headers.map(([name, value]) => `${name}: ${value}`).join('\n')}</pre>
+                  </details>
+                )}
+                <pre className="request-result__body">{result.body || '(无响应内容)'}</pre>
+                {result.bodyTruncated && <p>响应内容超过 100 KB，已截断显示。</p>}
+              </>
+            )}
+          </section>
+        )}
       </section>
     </div>
   );

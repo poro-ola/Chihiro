@@ -23,6 +23,7 @@ import {
   createBookmark,
   createCollection,
   createNote,
+  createRequest,
   createWorkspace,
   db,
   deleteCollection,
@@ -41,6 +42,7 @@ import {
   updateBookmark,
   updateBookmarkNote,
   updateNote,
+  updateRequest,
   updateAppSetting,
 } from '../../lib/db';
 import type {
@@ -49,12 +51,13 @@ import type {
   Collection,
   NoteItem,
   OpenTab,
+  RequestItem,
   SearchCategory,
   SearchResult,
   Workspace,
 } from '../../lib/types';
 import { Board } from './components/Board';
-import { BookmarkDialog, BookmarkNoteDialog, ConfirmDialog, NoteDialog } from './components/Dialogs';
+import { BookmarkDialog, BookmarkNoteDialog, ConfirmDialog, NoteDialog, RequestDialog } from './components/Dialogs';
 import { OpenTabsPanel } from './components/OpenTabsPanel';
 import { SearchPalette } from './components/SearchPalette';
 import { SettingsPanel } from './components/SettingsPanel';
@@ -97,6 +100,7 @@ function App() {
   const [confirm, setConfirm] = useState<ConfirmState>();
   const [bookmarkDialog, setBookmarkDialog] = useState<BookmarkDialogState>();
   const [noteDialog, setNoteDialog] = useState<NoteItem>();
+  const [requestDialog, setRequestDialog] = useState<RequestItem>();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -229,7 +233,7 @@ function App() {
           archived: Boolean(item.archivedAt),
           updatedAt: item.updatedAt,
         });
-      } else {
+      } else if (item.type === 'note') {
         if (searchCategory !== 'all' && searchCategory !== 'note') continue;
         if (!matches(`${item.content} ${path}`)) continue;
         const firstLine = item.content.trim().split('\n')[0] || '空白记事';
@@ -238,6 +242,20 @@ function App() {
           type: 'note',
           title: firstLine.slice(0, 100),
           subtitle: `${archivePrefix}${path}`,
+          workspaceId: collection.workspaceId,
+          collectionId: collection.id,
+          itemId: item.id,
+          archived: Boolean(item.archivedAt),
+          updatedAt: item.updatedAt,
+        });
+      } else {
+        if (searchCategory !== 'all' && searchCategory !== 'request') continue;
+        if (!matches(`${item.title} ${item.command} ${path}`)) continue;
+        results.push({
+          id: `search-request-${item.id}`,
+          type: 'request',
+          title: item.title,
+          subtitle: `${archivePrefix}${path} · ${item.command.trim().split(/\s+/).slice(0, 4).join(' ') || 'cURL 请求'}`,
           workspaceId: collection.workspaceId,
           collectionId: collection.id,
           itemId: item.id,
@@ -306,7 +324,7 @@ function App() {
     if (data?.type === 'tab') setDragLabel((data.tab as OpenTab).title);
     if (data?.type === 'item') {
       const item = data.item as BoardItem;
-      setDragLabel(item.type === 'bookmark' ? item.title : item.content || '空白记事');
+      setDragLabel(item.type === 'bookmark' ? item.title : item.type === 'note' ? item.content || '空白记事' : item.title);
     }
     if (data?.type === 'collection') setDragLabel((data.collection as Collection).name);
     if (data?.type === 'workspace') setDragLabel((data.workspace as Workspace).name);
@@ -420,6 +438,12 @@ function App() {
     notify('记事已更新');
   };
 
+  const saveRequestDialog = async (input: { title: string; command: string }) => {
+    if (!requestDialog) return;
+    await updateRequest(requestDialog.id, input);
+    notify('请求卡片已保存');
+  };
+
   if (!ready && !workspaces.length) {
     return (
       <div className="app-loading">
@@ -505,6 +529,12 @@ function App() {
               notify('记事已添加');
             })
             .catch((reason) => notify(reason instanceof Error ? reason.message : '无法添加记事', 'error'))}
+          onAddRequest={(collectionId) => void createRequest(collectionId)
+            .then((request) => {
+              setRequestDialog(request);
+              notify('请求卡片已添加');
+            })
+            .catch((reason) => notify(reason instanceof Error ? reason.message : '无法添加请求卡片', 'error'))}
           onEditBookmark={(item) => setBookmarkDialog({ collectionId: item.collectionId, item })}
           onEditBookmarkNote={(item) => setBookmarkDialog({
             collectionId: item.collectionId,
@@ -512,6 +542,7 @@ function App() {
             focusField: 'note',
           })}
           onEditNote={setNoteDialog}
+          onEditRequest={setRequestDialog}
           onOpenBookmarks={(collection, bookmarks) => void openBookmarks(bookmarks.map((item) => item.url))
             .then((opened) => notify(`已打开“${collection.name}”中的 ${opened} 个链接`))
             .catch((reason) => notify(reason instanceof Error ? reason.message : '无法打开集合链接', 'error'))}
@@ -561,6 +592,14 @@ function App() {
         collectionName={collectionMap.get(noteDialog?.collectionId || '')?.name || '集合'}
         onClose={() => setNoteDialog(undefined)}
         onSave={saveNoteDialog}
+      />
+
+      <RequestDialog
+        open={Boolean(requestDialog)}
+        item={requestDialog}
+        collectionName={collectionMap.get(requestDialog?.collectionId || '')?.name || '集合'}
+        onClose={() => setRequestDialog(undefined)}
+        onSave={saveRequestDialog}
       />
 
       <ConfirmDialog

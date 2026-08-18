@@ -6,9 +6,10 @@ import type {
   BookmarkItem,
   Collection,
   NoteItem,
+  RequestItem,
   Workspace,
 } from './types';
-import { BOOKMARK_NOTE_MAX_LENGTH } from './types';
+import { BOOKMARK_NOTE_MAX_LENGTH, REQUEST_COMMAND_MAX_LENGTH } from './types';
 
 export const APP_VERSION = '0.1.0';
 export const SCHEMA_VERSION = 2;
@@ -41,6 +42,7 @@ export class ChihiroDatabase extends Dexie {
       settings: 'id',
       appMeta: 'id, schemaVersion, appVersion',
     });
+
   }
 }
 
@@ -399,6 +401,38 @@ export async function updateNote(id: string, content: string) {
   const existing = await db.items.get(id);
   if (!existing || existing.type !== 'note') throw new Error('记事不存在');
   await db.items.put({ ...existing, content, updatedAt: now() });
+}
+
+export async function createRequest(collectionId: string) {
+  const timestamp = now();
+  const siblings = (await db.items.where('collectionId').equals(collectionId).sortBy('order'))
+    .filter((entry) => !entry.archivedAt);
+  const request: RequestItem = {
+    id: createId('request'),
+    collectionId,
+    type: 'request',
+    title: '未命名请求',
+    command: '',
+    order: siblings.length,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+  await db.items.add(request);
+  return request;
+}
+
+export async function updateRequest(id: string, input: { title: string; command: string }) {
+  if (input.command.length > REQUEST_COMMAND_MAX_LENGTH) {
+    throw new Error(`单条请求最多 ${REQUEST_COMMAND_MAX_LENGTH.toLocaleString()} 字`);
+  }
+  const existing = await db.items.get(id);
+  if (!existing || existing.type !== 'request') throw new Error('请求卡片不存在');
+  await db.items.put({
+    ...existing,
+    title: input.title.trim().slice(0, 200) || '未命名请求',
+    command: input.command,
+    updatedAt: now(),
+  });
 }
 
 export async function deleteItem(id: string) {

@@ -5,6 +5,7 @@ import {
   type ContentNotesSnapshot,
 } from '../lib/content-notes';
 import { db, ensureSeedData, normalizeUrl, updateBookmarkNote } from '../lib/db';
+import { CURL_MESSAGE, executeCurl, type CurlExecutionResult } from '../lib/curl';
 import type { BookmarkItem } from '../lib/types';
 
 const APP_ROW_ID = 'app' as const;
@@ -63,6 +64,11 @@ async function handleContentNotesMessage(message: ContentNotesRequest): Promise<
 
 export default defineBackground(() => {
   browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message && typeof message === 'object' && message.type === CURL_MESSAGE.execute) {
+      void executeCurl(typeof message.command === 'string' ? message.command : '')
+        .then((result: CurlExecutionResult) => sendResponse(result));
+      return true;
+    }
     if (!message || typeof message !== 'object' || !CONTENT_NOTE_REQUEST_TYPES.includes(message.type)) {
       return undefined;
     }
