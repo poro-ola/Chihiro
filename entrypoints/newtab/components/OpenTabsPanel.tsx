@@ -1,12 +1,13 @@
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { ChevronLeft, ChevronRight, GripVertical, PanelsTopLeft, Pin } from 'lucide-react';
+import { ChevronLeft, ChevronRight, GripVertical, PanelsTopLeft, Pin, X } from 'lucide-react';
 import type { OpenTab } from '../../../lib/types';
 
 interface OpenTabsPanelProps {
   tabs: OpenTab[];
   collapsed: boolean;
   onActivate: (id: number) => void;
+  onCloseTab: (id: number) => void;
   onToggleCollapsed: () => void;
 }
 
@@ -27,7 +28,15 @@ function TabFavicon({ tab }: { tab: OpenTab }) {
   );
 }
 
-function DraggableTab({ tab, onActivate }: { tab: OpenTab; onActivate: (id: number) => void }) {
+function DraggableTab({
+  tab,
+  onActivate,
+  onClose,
+}: {
+  tab: OpenTab;
+  onActivate: (id: number) => void;
+  onClose: (id: number) => void;
+}) {
   const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, isDragging } = useDraggable({
     id: `tab:${tab.id}`,
     data: { type: 'tab', tab },
@@ -57,11 +66,24 @@ function DraggableTab({ tab, onActivate }: { tab: OpenTab; onActivate: (id: numb
         </span>
         {tab.pinned && <Pin size={13} className="pin-icon" />}
       </button>
+      <button
+        className="open-tab__close"
+        onPointerDown={(event) => event.stopPropagation()}
+        onKeyDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          onClose(tab.id);
+        }}
+        aria-label={`关闭标签：${tab.title}`}
+        title={`关闭 ${tab.title}`}
+      >
+        <X size={14} />
+      </button>
     </article>
   );
 }
 
-export function OpenTabsPanel({ tabs, collapsed, onActivate, onToggleCollapsed }: OpenTabsPanelProps) {
+export function OpenTabsPanel({ tabs, collapsed, onActivate, onCloseTab, onToggleCollapsed }: OpenTabsPanelProps) {
   if (collapsed) {
     return (
       <aside className="tabs-panel tabs-panel--collapsed" aria-label="当前标签页">
@@ -88,7 +110,9 @@ export function OpenTabsPanel({ tabs, collapsed, onActivate, onToggleCollapsed }
       <p className="tabs-panel__hint">拖动标签到任意集合，原页面会保持打开。</p>
       <div className="open-tabs-list">
         {tabs.length ? (
-          tabs.map((tab) => <DraggableTab key={tab.id} tab={tab} onActivate={onActivate} />)
+          tabs.map((tab) => (
+            <DraggableTab key={tab.id} tab={tab} onActivate={onActivate} onClose={onCloseTab} />
+          ))
         ) : (
           <div className="tabs-empty">
             <PanelsTopLeft size={21} />

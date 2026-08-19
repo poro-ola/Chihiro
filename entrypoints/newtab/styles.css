@@ -1672,6 +1672,49 @@ kbd {
   text-align: left;
 }
 
+.open-tab__close {
+  display: grid;
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  align-self: center;
+  margin-right: 7px;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  color: var(--ink-faint);
+  background: transparent;
+  opacity: 0;
+  cursor: pointer;
+  transform: scale(0.92);
+  transition: color 140ms ease, background 140ms ease, opacity 140ms ease, transform 140ms ease;
+}
+
+.open-tab:hover .open-tab__close,
+.open-tab:focus-within .open-tab__close {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.open-tab__close:hover {
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+}
+
+.open-tab__close:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  transform: scale(1);
+}
+
+@media (hover: none) {
+  .open-tab__close {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .open-tab .favicon {
   flex-basis: 28px;
   width: 28px;

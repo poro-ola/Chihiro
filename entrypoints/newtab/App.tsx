@@ -16,7 +16,7 @@ import {
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { AlertTriangle, CheckCircle2, RefreshCw, RotateCcw, XCircle } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { activateTab, openBookmarks, subscribeToOpenTabs } from '../../lib/browser-tabs';
+import { activateTab, closeTab, openBookmarks, subscribeToOpenTabs } from '../../lib/browser-tabs';
 import {
   archiveItem,
   clearAllData,
@@ -561,6 +561,8 @@ function App() {
           tabs={openTabs}
           collapsed={settings?.rightPanelCollapsed || false}
           onActivate={(id) => void activateTab(id)}
+          onCloseTab={(id) => void closeTab(id)
+            .catch((reason) => notify(reason instanceof Error ? reason.message : '无法关闭标签', 'error'))}
           onToggleCollapsed={() => void updateAppSetting('rightPanelCollapsed', !(settings?.rightPanelCollapsed || false))}
         />
       </div>

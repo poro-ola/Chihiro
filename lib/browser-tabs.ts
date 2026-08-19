@@ -86,6 +86,11 @@ export async function activateTab(tabId: number) {
   if (typeof tab?.windowId === 'number') await browser.windows.update(tab.windowId, { focused: true });
 }
 
+export async function closeTab(tabId: number) {
+  if (tabId < 0 || !hasTabsApi()) return;
+  await browser.tabs.remove(tabId);
+}
+
 export async function openBookmark(url: string) {
   if (hasTabsApi()) {
     await browser.tabs.create({ url });
