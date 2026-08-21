@@ -6,6 +6,18 @@ import {
 } from '../lib/content-notes';
 import { db, ensureSeedData, normalizeUrl, updateBookmarkNote } from '../lib/db';
 import { CURL_MESSAGE, executeCurl, type CurlExecutionResult } from '../lib/curl';
+import {
+  CLOUD_SYNC_MESSAGE,
+  type CloudSyncRequest,
+  type CloudSyncResponse,
+} from '../lib/cloud-sync-messages';
+import {
+  configureCloudSync,
+  disableCloudSync,
+  getCloudSyncStatus,
+  performCloudSync,
+  scheduleCloudSync,
+} from '../lib/cloud-sync';
 import type { BookmarkItem } from '../lib/types';
 
 const APP_ROW_ID = 'app' as const;
@@ -15,6 +27,8 @@ const CONTENT_NOTE_REQUEST_TYPES = [
   CONTENT_NOTES_MESSAGE.savePosition,
   CONTENT_NOTES_MESSAGE.openWorkspace,
 ] as string[];
+const CLOUD_SYNC_REQUEST_TYPES = Object.values(CLOUD_SYNC_MESSAGE) as string[];
+const CLOUD_SYNC_ALARM = 'chihiro-cloud-sync';
 
 async function getPageNotes(url: string): Promise<ContentNotesSnapshot> {
   await ensureSeedData();
@@ -43,6 +57,7 @@ async function handleContentNotesMessage(message: ContentNotesRequest): Promise<
         return { ok: true, data: await getPageNotes(message.url) };
       case CONTENT_NOTES_MESSAGE.save:
         await updateBookmarkNote(message.itemId, message.note);
+        await scheduleCloudSync();
         return { ok: true, data: undefined };
       case CONTENT_NOTES_MESSAGE.savePosition:
         await ensureSeedData();
@@ -62,11 +77,39 @@ async function handleContentNotesMessage(message: ContentNotesRequest): Promise<
   }
 }
 
+async function handleCloudSyncMessage(message: CloudSyncRequest): Promise<CloudSyncResponse> {
+  try {
+    switch (message.type) {
+      case CLOUD_SYNC_MESSAGE.getStatus:
+        return { ok: true, status: await getCloudSyncStatus() };
+      case CLOUD_SYNC_MESSAGE.configure:
+        await configureCloudSync(message);
+        return { ok: true, status: await performCloudSync() };
+      case CLOUD_SYNC_MESSAGE.disable:
+        return { ok: true, status: await disableCloudSync() };
+      case CLOUD_SYNC_MESSAGE.syncNow:
+        return { ok: true, status: await performCloudSync() };
+      case CLOUD_SYNC_MESSAGE.schedule:
+        return { ok: true, status: await scheduleCloudSync() };
+    }
+  } catch (reason) {
+    return {
+      ok: false,
+      error: reason instanceof Error ? reason.message : '云同步失败',
+      status: await getCloudSyncStatus().catch(() => undefined),
+    };
+  }
+}
+
 export default defineBackground(() => {
   browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message && typeof message === 'object' && message.type === CURL_MESSAGE.execute) {
       void executeCurl(typeof message.command === 'string' ? message.command : '')
         .then((result: CurlExecutionResult) => sendResponse(result));
+      return true;
+    }
+    if (message && typeof message === 'object' && CLOUD_SYNC_REQUEST_TYPES.includes(message.type)) {
+      void handleCloudSyncMessage(message as CloudSyncRequest).then(sendResponse);
       return true;
     }
     if (!message || typeof message !== 'object' || !CONTENT_NOTE_REQUEST_TYPES.includes(message.type)) {
@@ -79,4 +122,10 @@ export default defineBackground(() => {
   browser.action.onClicked.addListener(() => {
     void browser.tabs.create({});
   });
+
+  void browser.alarms.create(CLOUD_SYNC_ALARM, { periodInMinutes: 1 });
+  browser.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === CLOUD_SYNC_ALARM) void performCloudSync().catch(() => undefined);
+  });
+  void scheduleCloudSync(0);
 });

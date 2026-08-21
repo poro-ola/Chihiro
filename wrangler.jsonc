@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "chihiro-sync",
+  "main": "cloudflare/worker.js",
+  "compatibility_date": "2026-08-21",
+  "workers_dev": true,
+  "r2_buckets": [
+    {
+      "binding": "SYNC_BUCKET",
+      "bucket_name": "chihiro-sync"
+    }
+  ],
+  "vars": {
+    "BACKUP_RETENTION": "30"
+  },
+  "secrets": {
+    "required": ["SYNC_TOKEN"]
+  }
+}

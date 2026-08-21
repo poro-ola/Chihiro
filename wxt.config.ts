@@ -12,7 +12,7 @@ export default defineConfig({
   manifest: {
     name: '千寻 · 标签与资料工作台',
     description: '把当前标签、书签和记事整理进一个本地优先的资料工作台。',
-    permissions: ['tabs'],
+    permissions: ['tabs', 'storage', 'alarms'],
     host_permissions: ['http://*/*', 'https://*/*'],
     action: {
       default_title: '打开千寻主界面',

@@ -70,6 +70,15 @@ export interface AppMeta {
   updatedAt: string;
 }
 
+export type DeletedEntityType = 'workspace' | 'collection' | 'item';
+
+export interface DeletedEntity {
+  key: string;
+  entityType: DeletedEntityType;
+  entityId: string;
+  deletedAt: string;
+}
+
 export interface OpenTab {
   id: number;
   windowId: number;

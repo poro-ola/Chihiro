@@ -5,6 +5,8 @@ import type {
   BoardItem,
   BookmarkItem,
   Collection,
+  DeletedEntity,
+  DeletedEntityType,
   NoteItem,
   RequestItem,
   Workspace,
@@ -12,7 +14,7 @@ import type {
 import { BOOKMARK_NOTE_MAX_LENGTH, REQUEST_COMMAND_MAX_LENGTH } from './types';
 
 export const APP_VERSION = '0.1.0';
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 const APP_ROW_ID = 'app' as const;
 
@@ -22,6 +24,7 @@ export class ChihiroDatabase extends Dexie {
   items!: Table<BoardItem, string>;
   settings!: Table<AppSettings, string>;
   appMeta!: Table<AppMeta, string>;
+  deletedEntities!: Table<DeletedEntity, string>;
 
   constructor() {
     // Keep the legacy storage key so upgrades continue reading existing local data.
@@ -43,6 +46,15 @@ export class ChihiroDatabase extends Dexie {
       appMeta: 'id, schemaVersion, appVersion',
     });
 
+    this.version(3).stores({
+      workspaces: 'id, order, updatedAt',
+      collections: 'id, workspaceId, order, [workspaceId+order], updatedAt',
+      items: 'id, collectionId, type, order, [collectionId+order], normalizedUrl, updatedAt',
+      settings: 'id',
+      appMeta: 'id, schemaVersion, appVersion',
+      deletedEntities: 'key, entityType, entityId, deletedAt',
+    });
+
   }
 }
 
@@ -55,6 +67,10 @@ function createId(prefix: string) {
 
 function now() {
   return new Date().toISOString();
+}
+
+function deletedEntity(entityType: DeletedEntityType, entityId: string, deletedAt: string): DeletedEntity {
+  return { key: `${entityType}:${entityId}`, entityType, entityId, deletedAt };
 }
 
 function prepareBookmarkNote(value?: string) {
@@ -219,16 +235,22 @@ export async function reorderWorkspaces(activeId: string, overId: string) {
 }
 
 export async function deleteWorkspace(id: string) {
-  await db.transaction('rw', db.workspaces, db.collections, db.items, db.settings, async () => {
-    const collectionIds = (await db.collections.where('workspaceId').equals(id).toArray()).map(
-      (collection) => collection.id,
-    );
+  await db.transaction('rw', [db.workspaces, db.collections, db.items, db.settings, db.deletedEntities], async () => {
+    const timestamp = now();
+    const collections = await db.collections.where('workspaceId').equals(id).toArray();
+    const collectionIds = collections.map((collection) => collection.id);
+    const items = collectionIds.length ? await db.items.where('collectionId').anyOf(collectionIds).toArray() : [];
+    await db.deletedEntities.bulkPut([
+      deletedEntity('workspace', id, timestamp),
+      ...collections.map((collection) => deletedEntity('collection', collection.id, timestamp)),
+      ...items.map((item) => deletedEntity('item', item.id, timestamp)),
+    ]);
     if (collectionIds.length) await db.items.where('collectionId').anyOf(collectionIds).delete();
     await db.collections.where('workspaceId').equals(id).delete();
     await db.workspaces.delete(id);
 
     const remaining = await db.workspaces.orderBy('order').toArray();
-    await db.workspaces.bulkPut(remaining.map((workspace, order) => ({ ...workspace, order })));
+    await db.workspaces.bulkPut(remaining.map((workspace, order) => ({ ...workspace, order, updatedAt: timestamp })));
     if (remaining[0]) await db.settings.update(APP_ROW_ID, { activeWorkspaceId: remaining[0].id });
   });
   await ensureSeedData();
@@ -274,13 +296,19 @@ export async function toggleCollection(id: string, isCollapsed: boolean) {
 }
 
 export async function deleteCollection(id: string) {
-  await db.transaction('rw', db.collections, db.items, async () => {
+  await db.transaction('rw', db.collections, db.items, db.deletedEntities, async () => {
     const collection = await db.collections.get(id);
     if (!collection) return;
+    const timestamp = now();
+    const items = await db.items.where('collectionId').equals(id).toArray();
+    await db.deletedEntities.bulkPut([
+      deletedEntity('collection', id, timestamp),
+      ...items.map((item) => deletedEntity('item', item.id, timestamp)),
+    ]);
     await db.items.where('collectionId').equals(id).delete();
     await db.collections.delete(id);
     const siblings = await db.collections.where('workspaceId').equals(collection.workspaceId).sortBy('order');
-    await db.collections.bulkPut(siblings.map((entry, order) => ({ ...entry, order })));
+    await db.collections.bulkPut(siblings.map((entry, order) => ({ ...entry, order, updatedAt: timestamp })));
   });
 }
 
@@ -336,7 +364,7 @@ export async function createBookmark(
       .filter((entry) => !entry.archivedAt);
     const index = Math.min(Math.max(targetIndex ?? siblings.length, 0), siblings.length);
     siblings.splice(index, 0, item);
-    await db.items.bulkPut(siblings.map((entry, order) => ({ ...entry, order })));
+    await db.items.bulkPut(siblings.map((entry, order) => ({ ...entry, order, updatedAt: timestamp })));
   });
 
   return { created: true as const, item };
@@ -438,22 +466,26 @@ export async function updateRequest(id: string, input: { title: string; command:
 export async function deleteItem(id: string) {
   const item = await db.items.get(id);
   if (!item) return undefined;
-  await db.transaction('rw', db.items, async () => {
+  await db.transaction('rw', db.items, db.deletedEntities, async () => {
+    const timestamp = now();
     await db.items.delete(id);
+    await db.deletedEntities.put(deletedEntity('item', id, timestamp));
     const siblings = (await db.items.where('collectionId').equals(item.collectionId).sortBy('order'))
       .filter((entry) => !entry.archivedAt);
-    await db.items.bulkPut(siblings.map((entry, order) => ({ ...entry, order })));
+    await db.items.bulkPut(siblings.map((entry, order) => ({ ...entry, order, updatedAt: timestamp })));
   });
   return item;
 }
 
 export async function restoreItem(item: BoardItem) {
-  await db.transaction('rw', db.items, async () => {
+  await db.transaction('rw', db.items, db.deletedEntities, async () => {
+    const restoredAt = now();
     const siblings = (await db.items.where('collectionId').equals(item.collectionId).sortBy('order'))
       .filter((entry) => Boolean(entry.archivedAt) === Boolean(item.archivedAt));
     const index = Math.min(item.order, siblings.length);
-    siblings.splice(index, 0, item);
-    await db.items.bulkPut(siblings.map((entry, order) => ({ ...entry, order })));
+    siblings.splice(index, 0, { ...item, updatedAt: restoredAt });
+    await db.items.bulkPut(siblings.map((entry, order) => ({ ...entry, order, updatedAt: restoredAt })));
+    await db.deletedEntities.delete(`item:${item.id}`);
   });
 }
 
@@ -467,21 +499,22 @@ export async function moveItem(itemId: string, collectionId: string, targetIndex
     const sourceIndex = sourceItems.findIndex((entry) => entry.id === itemId);
     if (sourceIndex < 0) return;
     sourceItems.splice(sourceIndex, 1);
+    const timestamp = now();
 
     if (sourceCollectionId === collectionId) {
       const index = Math.min(Math.max(targetIndex ?? sourceItems.length, 0), sourceItems.length);
       sourceItems.splice(index, 0, item);
-      await db.items.bulkPut(sourceItems.map((entry, order) => ({ ...entry, order, updatedAt: now() })));
+      await db.items.bulkPut(sourceItems.map((entry, order) => ({ ...entry, order, updatedAt: timestamp })));
       return;
     }
 
     const targetItems = (await db.items.where('collectionId').equals(collectionId).sortBy('order'))
       .filter((entry) => !entry.archivedAt);
     const index = Math.min(Math.max(targetIndex ?? targetItems.length, 0), targetItems.length);
-    targetItems.splice(index, 0, { ...item, collectionId, updatedAt: now() });
+    targetItems.splice(index, 0, { ...item, collectionId, updatedAt: timestamp });
 
-    await db.items.bulkPut(sourceItems.map((entry, order) => ({ ...entry, order })));
-    await db.items.bulkPut(targetItems.map((entry, order) => ({ ...entry, order })));
+    await db.items.bulkPut(sourceItems.map((entry, order) => ({ ...entry, order, updatedAt: timestamp })));
+    await db.items.bulkPut(targetItems.map((entry, order) => ({ ...entry, order, updatedAt: timestamp })));
   });
 }
 
@@ -494,7 +527,7 @@ export async function archiveItem(id: string) {
     await db.items.put({ ...item, archivedAt, updatedAt: archivedAt });
     const siblings = (await db.items.where('collectionId').equals(item.collectionId).sortBy('order'))
       .filter((entry) => !entry.archivedAt);
-    await db.items.bulkPut(siblings.map((entry, order) => ({ ...entry, order })));
+    await db.items.bulkPut(siblings.map((entry, order) => ({ ...entry, order, updatedAt: archivedAt })));
   });
   return { ...item, archivedAt, updatedAt: archivedAt };
 }
@@ -518,8 +551,25 @@ export async function unarchiveItem(id: string) {
 }
 
 export async function clearAllData() {
-  await db.transaction('rw', db.workspaces, db.collections, db.items, db.settings, db.appMeta, async () => {
-    await Promise.all(db.tables.map((table) => table.clear()));
+  await db.transaction('rw', [db.workspaces, db.collections, db.items, db.settings, db.appMeta, db.deletedEntities], async () => {
+    const timestamp = now();
+    const [workspaces, collections, items] = await Promise.all([
+      db.workspaces.toArray(),
+      db.collections.toArray(),
+      db.items.toArray(),
+    ]);
+    await db.deletedEntities.bulkPut([
+      ...workspaces.map((entry) => deletedEntity('workspace', entry.id, timestamp)),
+      ...collections.map((entry) => deletedEntity('collection', entry.id, timestamp)),
+      ...items.map((entry) => deletedEntity('item', entry.id, timestamp)),
+    ]);
+    await Promise.all([
+      db.workspaces.clear(),
+      db.collections.clear(),
+      db.items.clear(),
+      db.settings.clear(),
+      db.appMeta.clear(),
+    ]);
   });
   await ensureSeedData();
 }

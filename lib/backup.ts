@@ -89,8 +89,8 @@ export async function restoreBackup(file: File, mode: 'merge' | 'replace') {
 
   await importInto(db, databaseBlob, {
     acceptNameDiff: false,
-    acceptVersionDiff: false,
-    acceptMissingTables: false,
+    acceptVersionDiff: true,
+    acceptMissingTables: true,
     overwriteValues: true,
     clearTablesBeforeImport: mode === 'replace',
   });

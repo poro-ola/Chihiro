@@ -9,9 +9,14 @@
     "dev:firefox": "wxt -b firefox",
     "build": "wxt build",
     "build:firefox": "wxt build -b firefox",
+    "test": "bun test",
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
     "compile": "tsc --noEmit",
+    "cloudflare:login": "bunx wrangler login",
+    "cloudflare:create-bucket": "bunx wrangler r2 bucket create chihiro-sync",
+    "cloudflare:secret": "bunx wrangler secret put SYNC_TOKEN",
+    "cloudflare:deploy": "bunx wrangler deploy",
     "postinstall": "wxt prepare"
   },
   "dependencies": {
@@ -31,6 +36,7 @@
     "@wxt-dev/module-react": "^1.1.5",
     "typescript": "^5.9.3",
     "web-ext": "^10.5.0",
+    "wrangler": "^4.125.0",
     "wxt": "^0.21.3"
   }
 }

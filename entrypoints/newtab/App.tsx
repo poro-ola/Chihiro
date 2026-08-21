@@ -17,6 +17,7 @@ import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { AlertTriangle, CheckCircle2, RefreshCw, RotateCcw, XCircle } from 'lucide-react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { activateTab, closeTab, openBookmarks, subscribeToOpenTabs } from '../../lib/browser-tabs';
+import { CLOUD_SYNC_MESSAGE } from '../../lib/cloud-sync-messages';
 import {
   archiveItem,
   clearAllData,
@@ -113,6 +114,7 @@ function App() {
   const toastTimer = useRef<number | undefined>(undefined);
   const hoverTimer = useRef<number | undefined>(undefined);
   const hoverCollectionId = useRef<string | undefined>(undefined);
+  const syncFingerprintRef = useRef('');
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 7 } }),
@@ -149,6 +151,26 @@ function App() {
     window.clearTimeout(toastTimer.current);
     window.clearTimeout(hoverTimer.current);
   }, []);
+
+  const syncFingerprint = useMemo(
+    () => [
+      ...workspaces.map((entry) => `${entry.id}:${entry.updatedAt}`),
+      ...collections.map((entry) => `${entry.id}:${entry.updatedAt}`),
+      ...items.map((entry) => `${entry.id}:${entry.updatedAt}`),
+    ].sort().join('|'),
+    [workspaces, collections, items],
+  );
+
+  useEffect(() => {
+    if (!ready || !syncFingerprint) return;
+    if (!syncFingerprintRef.current) {
+      syncFingerprintRef.current = syncFingerprint;
+      return;
+    }
+    if (syncFingerprintRef.current === syncFingerprint) return;
+    syncFingerprintRef.current = syncFingerprint;
+    void browser.runtime.sendMessage({ type: CLOUD_SYNC_MESSAGE.schedule }).catch(() => undefined);
+  }, [ready, syncFingerprint]);
 
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {

@@ -1,6 +1,25 @@
-import { useRef, useState } from 'react';
-import { Database, Download, HardDrive, LayoutList, ShieldCheck, Trash2, Upload, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  Cloud,
+  Database,
+  Download,
+  HardDrive,
+  KeyRound,
+  LayoutList,
+  RefreshCw,
+  ShieldCheck,
+  Trash2,
+  Upload,
+  WifiOff,
+  X,
+} from 'lucide-react';
 import { downloadBackup, restoreBackup } from '../../../lib/backup';
+import {
+  CLOUD_SYNC_MESSAGE,
+  type CloudSyncRequest,
+  type CloudSyncResponse,
+  type CloudSyncStatus,
+} from '../../../lib/cloud-sync-messages';
 
 interface SettingsPanelProps {
   open: boolean;
@@ -10,6 +29,15 @@ interface SettingsPanelProps {
   onNotify: (message: string, tone?: 'success' | 'error') => void;
   onCompactModeChange: (compactMode: boolean) => Promise<void>;
   onRequestClear: () => void;
+}
+
+const DEFAULT_CLOUD_ENDPOINT = 'https://chihiro-sync.tan-jie.workers.dev';
+
+async function sendCloudSyncMessage(message: CloudSyncRequest) {
+  const response = await browser.runtime.sendMessage(message) as CloudSyncResponse | undefined;
+  if (!response) throw new Error('云同步后台没有响应');
+  if (!response.ok) throw new Error(response.error);
+  return response.status;
 }
 
 export function SettingsPanel({
@@ -26,6 +54,21 @@ export function SettingsPanel({
   const [busy, setBusy] = useState(false);
   const [layoutBusy, setLayoutBusy] = useState(false);
   const [pendingFile, setPendingFile] = useState<File>();
+  const [cloudStatus, setCloudStatus] = useState<CloudSyncStatus>();
+  const [cloudEndpoint, setCloudEndpoint] = useState(DEFAULT_CLOUD_ENDPOINT);
+  const [cloudToken, setCloudToken] = useState('');
+  const [cloudPassphrase, setCloudPassphrase] = useState('');
+  const [cloudBusy, setCloudBusy] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    void sendCloudSyncMessage({ type: CLOUD_SYNC_MESSAGE.getStatus })
+      .then((status) => {
+        setCloudStatus(status);
+        setCloudEndpoint(status.endpoint || DEFAULT_CLOUD_ENDPOINT);
+      })
+      .catch((reason) => onNotify(reason instanceof Error ? reason.message : '无法读取云同步设置', 'error'));
+  }, [open, onNotify]);
 
   if (!open) return null;
 
@@ -57,14 +100,143 @@ export function SettingsPanel({
         <section className="storage-summary">
           <div className="storage-summary__icon"><HardDrive size={23} /></div>
           <div>
-            <strong>资料仅保存在此浏览器</strong>
-            <p>IndexedDB 由 Dexie 管理，不上传书签或记事。</p>
+            <strong>资料优先保存在此浏览器</strong>
+            <p>本地由 IndexedDB 管理；启用云同步后只上传加密快照。</p>
           </div>
           <div className="storage-stats">
             <span><b>{counts.workspaces}</b> 空间</span>
             <span><b>{counts.collections}</b> 集合</span>
             <span><b>{counts.items}</b> 条资料</span>
           </div>
+        </section>
+
+        <section className="settings-section">
+          <div className="settings-section__heading">
+            <Cloud size={18} />
+            <div>
+              <h3>Cloudflare 云同步</h3>
+              <p>本地优先、端到端加密；R2 仅保存密文与最近 30 个版本。</p>
+            </div>
+          </div>
+
+          <div className={`sync-status ${cloudStatus?.enabled ? 'is-active' : ''}`}>
+            <span className="sync-status__dot" aria-hidden="true" />
+            <div>
+              <strong>{cloudStatus?.enabled ? '云同步已启用' : '云同步未启用'}</strong>
+              <span>
+                {cloudStatus?.lastSyncedAt
+                  ? `上次同步：${new Date(cloudStatus.lastSyncedAt).toLocaleString()}`
+                  : '配置后会在变更时自动同步，并每分钟检查云端更新。'}
+              </span>
+            </div>
+          </div>
+
+          <div className="sync-form">
+            <label>
+              <span>Worker 地址</span>
+              <input
+                type="url"
+                value={cloudEndpoint}
+                placeholder="https://chihiro-sync.<账号>.workers.dev"
+                spellCheck={false}
+                onChange={(event) => setCloudEndpoint(event.target.value)}
+              />
+            </label>
+            <label>
+              <span>同步 Token</span>
+              <div className="sync-secret-field">
+                <KeyRound size={14} />
+                <input
+                  type="password"
+                  value={cloudToken}
+                  placeholder={cloudStatus?.configured ? '已保存；留空不修改' : '至少 24 个字符'}
+                  autoComplete="new-password"
+                  onChange={(event) => setCloudToken(event.target.value)}
+                />
+              </div>
+            </label>
+            <label>
+              <span>客户端加密口令</span>
+              <div className="sync-secret-field">
+                <ShieldCheck size={14} />
+                <input
+                  type="password"
+                  value={cloudPassphrase}
+                  placeholder={cloudStatus?.configured ? '已保存；留空不修改' : '至少 16 个字符，请在设备间安全保存'}
+                  autoComplete="new-password"
+                  onChange={(event) => setCloudPassphrase(event.target.value)}
+                />
+              </div>
+            </label>
+          </div>
+
+          {cloudStatus?.lastError && <p className="sync-error">{cloudStatus.lastError}</p>}
+
+          <div className="sync-actions">
+            <button
+              type="button"
+              className="primary-button"
+              disabled={cloudBusy || !cloudEndpoint.trim()}
+              onClick={() => {
+                setCloudBusy(true);
+                void sendCloudSyncMessage({
+                  type: CLOUD_SYNC_MESSAGE.configure,
+                  endpoint: cloudEndpoint,
+                  accessToken: cloudToken || undefined,
+                  encryptionPassphrase: cloudPassphrase || undefined,
+                })
+                  .then((status) => {
+                    setCloudStatus(status);
+                    setCloudToken('');
+                    setCloudPassphrase('');
+                    onNotify('云同步已连接并完成首次同步');
+                  })
+                  .catch((reason) => onNotify(reason instanceof Error ? reason.message : '云同步配置失败', 'error'))
+                  .finally(() => setCloudBusy(false));
+              }}
+            >
+              <Cloud size={16} />{cloudBusy ? '连接中…' : '保存并立即同步'}
+            </button>
+            {cloudStatus?.enabled && (
+              <>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  disabled={cloudBusy}
+                  onClick={() => {
+                    setCloudBusy(true);
+                    void sendCloudSyncMessage({ type: CLOUD_SYNC_MESSAGE.syncNow })
+                      .then((status) => {
+                        setCloudStatus(status);
+                        onNotify('已与云端同步');
+                      })
+                      .catch((reason) => onNotify(reason instanceof Error ? reason.message : '同步失败', 'error'))
+                      .finally(() => setCloudBusy(false));
+                  }}
+                >
+                  <RefreshCw size={15} />立即同步
+                </button>
+                <button
+                  type="button"
+                  className="text-button"
+                  disabled={cloudBusy}
+                  onClick={() => {
+                    setCloudBusy(true);
+                    void sendCloudSyncMessage({ type: CLOUD_SYNC_MESSAGE.disable })
+                      .then((status) => {
+                        setCloudStatus(status);
+                        onNotify('已停用云同步，本地数据不受影响');
+                      })
+                      .catch((reason) => onNotify(reason instanceof Error ? reason.message : '无法停用云同步', 'error'))
+                      .finally(() => setCloudBusy(false));
+                  }}
+                >
+                  <WifiOff size={14} />停用
+                </button>
+              </>
+            )}
+          </div>
+          <p className="sync-hint">Token 用于访问控制；加密口令只保存在本机，遗失后云端密文无法恢复。</p>
         </section>
 
         <section className="settings-section">

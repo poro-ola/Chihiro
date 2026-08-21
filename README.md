@@ -17,7 +17,7 @@
 
 千寻是一款面向重度浏览器用户的 Chrome / Chromium 扩展。它将新标签页变成三栏资料工作台：左侧管理工作区，中间组织集合、书签与记事，右侧实时显示当前窗口的标签页。
 
-产品采用本地优先设计，不需要账号，也不依赖远程服务。工作区、集合、书签、记事、排序和界面设置统一保存在扩展自身的 IndexedDB 中，并可导出为完整 JSON 备份。
+产品采用本地优先设计，不需要账号。工作区、集合、书签、记事、排序和界面设置统一保存在扩展自身的 IndexedDB 中，并可导出为完整 JSON 备份；需要跨设备时，可以选择连接自有 Cloudflare Worker 与 R2 进行端到端加密同步。
 
 > 当前版本：`0.1.0` · MVP 开发阶段
 
@@ -59,6 +59,14 @@
 - 导出包含全部表数据、实体关系、排序和设置的 JSON 备份。
 - 导入支持“合并”与“覆盖”两种模式，并在导入前校验文件格式。
 - 设置中可查看本地数据数量、切换紧凑模式或清空全部数据。
+
+### Cloudflare 加密云同步
+
+- 可选连接自有 Cloudflare Worker 与私有 R2 存储桶，不依赖千寻账号体系。
+- 客户端使用 AES-GCM 加密完整快照，加密口令只保存在浏览器本机，Cloudflare 仅保存密文。
+- 本地变更后自动同步，并每分钟检查一次云端更新；多设备按实体更新时间合并。
+- 删除操作通过 tombstone 同步，避免已经删除的数据被其他设备重新带回。
+- Worker 使用版本条件写入避免并发覆盖，并在 R2 中保留最近 30 份历史快照。
 
 ## 快速开始
 
@@ -110,9 +118,14 @@ bun run zip
 | 命令 | 用途 |
 |---|---|
 | `bun run dev` | 启动 Chrome 开发环境 |
+| `bun test` | 运行自动化测试 |
 | `bun run compile` | 执行 TypeScript 无输出类型检查 |
 | `bun run build` | 构建 Chrome Manifest V3 扩展 |
 | `bun run zip` | 生成 Chrome 分发压缩包 |
+| `bun run cloudflare:login` | 登录 Cloudflare Wrangler |
+| `bun run cloudflare:create-bucket` | 首次创建 `chihiro-sync` R2 存储桶 |
+| `bun run cloudflare:secret` | 设置或轮换 Worker Secret `SYNC_TOKEN` |
+| `bun run cloudflare:deploy` | 将本地 `cloudflare/worker.js` 部署到 Cloudflare |
 | `bun run dev:firefox` | 启动 Firefox 开发构建 |
 | `bun run build:firefox` | 构建 Firefox 版本 |
 | `bun run zip:firefox` | 生成 Firefox 压缩包 |
@@ -139,6 +152,8 @@ Firefox 脚本由 WXT 提供，但当前 MVP 主要验证平台为最新版 Chro
 | 网页备注 | WXT Content Script + Shadow DOM | 注入悬浮按钮与极简备注编辑器 |
 | 后台服务 | MV3 Service Worker | 在 Content Script 与扩展数据库之间转发受控消息 |
 | 数据层 | Dexie + IndexedDB | 领域数据、排序、设置、事务和迁移 |
+| 云同步客户端 | Web Crypto + Fetch | 加密快照、合并实体、定时同步和版本冲突重试 |
+| 云同步服务 | Cloudflare Worker + 私有 R2 | Token 鉴权、条件写入和最近 30 份密文备份 |
 | 浏览器能力 | WebExtension Tabs API | 查询、切换和打开浏览器标签 |
 | 备份恢复 | dexie-export-import | 导出、校验、合并或覆盖 JSON 备份 |
 | 拖拽系统 | dnd-kit | 工作区、集合、卡片和当前标签的排序与移动 |
@@ -160,11 +175,17 @@ chihiro/
 ├── lib/
 │   ├── backup.ts                 # JSON 备份与恢复
 │   ├── browser-tabs.ts           # 浏览器标签 API 封装
+│   ├── cloud-sync.ts             # 加密、合并和 Cloudflare 同步客户端
+│   ├── cloud-sync-messages.ts    # 云同步消息契约
 │   ├── content-notes.ts          # 网页备注消息契约
 │   ├── db.ts                     # Dexie 数据库与领域操作
 │   └── types.ts                  # 领域类型
+├── cloudflare/
+│   └── worker.js                 # R2 快照 API、鉴权和版本备份
+├── tests/                        # Cloudflare Worker 自动化测试
 ├── public/                       # 扩展图标与静态资源
 ├── package.json
+├── wrangler.jsonc                # Worker、R2 binding 与非敏感变量
 └── wxt.config.ts                 # WXT 与 Manifest 配置
 ```
 
@@ -177,13 +198,13 @@ chihiro/
 | 项目 | 当前行为 |
 |---|---|
 | 业务数据位置 | 扩展自身源下的 IndexedDB |
-| 云同步 / 账号 | 不提供 |
-| 远程数据服务 | 不使用 |
+| 云同步 / 账号 | 不需要账号；可选连接自有 Cloudflare Worker |
+| 远程数据服务 | 私有 R2 仅保存客户端加密后的快照 |
 | 网页正文读取 | 不读取、不索引、不上传 |
 | 网页备注范围 | 仅 HTTP / HTTPS 页面，读取当前 URL |
-| 浏览器权限 | `tabs`，用于显示、切换和打开当前窗口标签 |
+| 浏览器权限 | `tabs`、`storage`、`alarms`，用于标签管理、同步配置和定时同步 |
 | Content Script | 匹配 HTTP / HTTPS，用于渲染悬浮备注界面 |
-| 未申请权限 | `history`、`bookmarks`、`storage`、`sidePanel` |
+| 未申请权限 | `history`、`bookmarks`、`sidePanel` |
 
 为兼容早期本地数据，界面品牌和备份格式已使用 `Chihiro`，IndexedDB 的物理数据库名称仍保留为 `qianxun`。
 
@@ -198,6 +219,51 @@ chihiro/
 
 建议在升级扩展、清空数据或大规模整理资料前先导出备份。备份文件包含你的书签、记事和界面设置，请自行妥善保管。
 
+## Cloudflare R2 云同步
+
+### 当前部署
+
+| 项目 | 值 |
+|---|---|
+| Worker | `https://chihiro-sync.tan-jie.workers.dev` |
+| R2 存储桶 | `chihiro-sync`（私有） |
+| R2 binding | `SYNC_BUCKET` |
+| Worker Secret | `SYNC_TOKEN`，只在 Cloudflare 中保存，不写入仓库 |
+| 历史版本 | 最近 30 份加密快照 |
+
+客户端还需要单独设置加密口令。该口令不会发送给 Cloudflare，所有需要互相同步的设备必须使用相同的 Worker 地址、Token 和加密口令。口令丢失后无法解密云端备份。
+
+### 首次部署
+
+```bash
+bun run cloudflare:login
+bun run cloudflare:create-bucket
+bun run cloudflare:secret
+bun run cloudflare:deploy
+```
+
+`cloudflare:create-bucket` 仅在存储桶尚未创建时执行。运行 `cloudflare:secret` 后按提示输入随机强 Token，不要把 Token 或客户端加密口令写入 `.env`、README、提交记录或公开日志。
+
+部署完成后，在千寻“设置与备份 → Cloudflare 云同步”中填写 Worker 地址、同步 Token 和客户端加密口令，再点击“保存并立即同步”。新设备会先下载并合并已有云端快照；如果云端尚无快照，则上传当前本地数据。
+
+### 更新 Worker
+
+本地 [`cloudflare/worker.js`](./cloudflare/worker.js) **不会自动同步**到 Cloudflare。修改后需要重新部署：
+
+```bash
+bun test
+bun run cloudflare:deploy
+```
+
+Worker 部署和浏览器扩展更新是两个独立流程：
+
+1. 修改 Worker 后运行 `bun run cloudflare:deploy`。
+2. 修改扩展代码后运行 `bun run compile && bun run build`。
+3. 打开 `chrome://extensions`，找到千寻并点击“重新加载”。
+4. 回到新标签页，点击“立即同步”验证读写。
+
+`wrangler.jsonc` 保存 Worker 名称、R2 binding 和备份数量等非敏感配置；`SYNC_TOKEN` 必须继续作为 Worker Secret 管理。若接入 GitHub Actions，才可以在代码推送后自动部署 Worker。
+
 ## 浏览器支持
 
 | 浏览器 | 状态 |
@@ -209,7 +275,7 @@ chihiro/
 
 ## 当前边界
 
-- 不提供账号、云同步、团队协作或分享链接。
+- 不提供千寻账号、团队协作或分享链接；云同步由用户自有 Cloudflare 资源提供。
 - 不读取浏览历史，也不导入浏览器原生书签。
 - 不索引网页正文，不提供 AI 摘要或语义搜索。
 - 记事和书签备注均为纯文本，不渲染 Markdown 或富文本。
