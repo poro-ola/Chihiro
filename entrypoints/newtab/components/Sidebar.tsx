@@ -3,6 +3,7 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-
 import { CSS } from '@dnd-kit/utilities';
 import {
   Archive,
+  BellRing,
   ChevronLeft,
   ChevronRight,
   Folder,
@@ -25,7 +26,9 @@ interface SidebarProps {
   onDelete: (workspace: Workspace) => void;
   onOpenSearch: () => void;
   onOpenSettings: () => void;
+  onOpenReminders: () => void;
   onToggleCollapsed: () => void;
+  reminderCount: number;
 }
 
 interface WorkspaceRowProps {
@@ -147,7 +150,9 @@ export function Sidebar({
   onDelete,
   onOpenSearch,
   onOpenSettings,
+  onOpenReminders,
   onToggleCollapsed,
+  reminderCount,
 }: SidebarProps) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
@@ -275,6 +280,18 @@ export function Sidebar({
       </div>
 
       <div className="sidebar-spacer" />
+      <button className="sidebar-reminders" onClick={onOpenReminders} title={reminderCount > 0 ? `${reminderCount} 个提醒需要处理` : '提醒'}>
+        <span className="sidebar-reminders__icon">
+          <BellRing size={18} />
+          {reminderCount > 0 && <b aria-label={`${reminderCount} 个待处理提醒`}>{reminderCount > 99 ? '99+' : reminderCount}</b>}
+        </span>
+        {!collapsed && (
+          <span className="sidebar-reminders__copy">
+            <strong>提醒</strong>
+            <em>{reminderCount > 0 ? `${reminderCount} 件事待处理` : '日期与纪念日'}</em>
+          </span>
+        )}
+      </button>
       {!collapsed && (
         <div className="local-badge">
           <Archive size={16} />

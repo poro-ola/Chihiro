@@ -70,7 +70,28 @@ export interface AppMeta {
   updatedAt: string;
 }
 
-export type DeletedEntityType = 'workspace' | 'collection' | 'item';
+export type ReminderKind = 'todo' | 'event' | 'anniversary';
+export type ReminderCalendar = 'solar' | 'lunar';
+export type ReminderRepeat = 'once' | 'yearly';
+
+export interface Reminder {
+  id: string;
+  title: string;
+  kind: ReminderKind;
+  repeat: ReminderRepeat;
+  calendar: ReminderCalendar;
+  date?: string;
+  lunarMonth?: number;
+  lunarDay?: number;
+  lunarLeapMonth?: boolean;
+  advanceDays: number;
+  completedAt?: string;
+  completedOccurrence?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type DeletedEntityType = 'workspace' | 'collection' | 'item' | 'reminder';
 
 export interface DeletedEntity {
   key: string;

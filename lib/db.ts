@@ -8,13 +8,15 @@ import type {
   DeletedEntity,
   DeletedEntityType,
   NoteItem,
+  Reminder,
   RequestItem,
   Workspace,
 } from './types';
 import { BOOKMARK_NOTE_MAX_LENGTH, REQUEST_COMMAND_MAX_LENGTH } from './types';
+import { dateKey, prepareReminderInput, resolveReminder, type ReminderInput } from './reminders';
 
 export const APP_VERSION = '0.1.0';
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 const APP_ROW_ID = 'app' as const;
 
@@ -25,6 +27,7 @@ export class ChihiroDatabase extends Dexie {
   settings!: Table<AppSettings, string>;
   appMeta!: Table<AppMeta, string>;
   deletedEntities!: Table<DeletedEntity, string>;
+  reminders!: Table<Reminder, string>;
 
   constructor() {
     // Keep the legacy storage key so upgrades continue reading existing local data.
@@ -55,6 +58,15 @@ export class ChihiroDatabase extends Dexie {
       deletedEntities: 'key, entityType, entityId, deletedAt',
     });
 
+    this.version(4).stores({
+      workspaces: 'id, order, updatedAt',
+      collections: 'id, workspaceId, order, [workspaceId+order], updatedAt',
+      items: 'id, collectionId, type, order, [collectionId+order], normalizedUrl, updatedAt',
+      settings: 'id',
+      appMeta: 'id, schemaVersion, appVersion',
+      deletedEntities: 'key, entityType, entityId, deletedAt',
+      reminders: 'id, kind, repeat, date, updatedAt',
+    });
   }
 }
 
@@ -550,23 +562,73 @@ export async function unarchiveItem(id: string) {
   return db.items.get(id);
 }
 
+export async function createReminder(input: ReminderInput) {
+  const prepared = prepareReminderInput(input);
+  const createdAt = now();
+  const reminder: Reminder = {
+    id: createId('reminder'),
+    ...prepared,
+    createdAt,
+    updatedAt: createdAt,
+  };
+  await db.reminders.add(reminder);
+  return reminder;
+}
+
+export async function updateReminder(id: string, input: ReminderInput) {
+  const existing = await db.reminders.get(id);
+  if (!existing) throw new Error('提醒不存在或已删除');
+  const prepared = prepareReminderInput(input);
+  const reminder: Reminder = {
+    ...existing,
+    ...prepared,
+    updatedAt: now(),
+  };
+  await db.reminders.put(reminder);
+  return reminder;
+}
+
+export async function completeReminder(id: string, today = dateKey()) {
+  const reminder = await db.reminders.get(id);
+  if (!reminder) throw new Error('提醒不存在或已删除');
+  const schedule = resolveReminder(reminder, today);
+  if (!schedule?.isAlerting) throw new Error('还没到这个提醒的提示时间');
+  const completedAt = now();
+  await db.reminders.update(id, reminder.repeat === 'once'
+    ? { completedAt, updatedAt: completedAt }
+    : { completedOccurrence: schedule.dueDate, updatedAt: completedAt });
+}
+
+export async function deleteReminder(id: string) {
+  await db.transaction('rw', db.reminders, db.deletedEntities, async () => {
+    const reminder = await db.reminders.get(id);
+    if (!reminder) return;
+    const deletedAt = now();
+    await db.reminders.delete(id);
+    await db.deletedEntities.put(deletedEntity('reminder', id, deletedAt));
+  });
+}
+
 export async function clearAllData() {
-  await db.transaction('rw', [db.workspaces, db.collections, db.items, db.settings, db.appMeta, db.deletedEntities], async () => {
+  await db.transaction('rw', [db.workspaces, db.collections, db.items, db.settings, db.appMeta, db.deletedEntities, db.reminders], async () => {
     const timestamp = now();
-    const [workspaces, collections, items] = await Promise.all([
+    const [workspaces, collections, items, reminders] = await Promise.all([
       db.workspaces.toArray(),
       db.collections.toArray(),
       db.items.toArray(),
+      db.reminders.toArray(),
     ]);
     await db.deletedEntities.bulkPut([
       ...workspaces.map((entry) => deletedEntity('workspace', entry.id, timestamp)),
       ...collections.map((entry) => deletedEntity('collection', entry.id, timestamp)),
       ...items.map((entry) => deletedEntity('item', entry.id, timestamp)),
+      ...reminders.map((entry) => deletedEntity('reminder', entry.id, timestamp)),
     ]);
     await Promise.all([
       db.workspaces.clear(),
       db.collections.clear(),
       db.items.clear(),
+      db.reminders.clear(),
       db.settings.clear(),
       db.appMeta.clear(),
     ]);

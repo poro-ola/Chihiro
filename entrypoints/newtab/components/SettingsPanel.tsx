@@ -23,7 +23,7 @@ import {
 
 interface SettingsPanelProps {
   open: boolean;
-  counts: { workspaces: number; collections: number; items: number };
+  counts: { workspaces: number; collections: number; items: number; reminders: number };
   compactMode: boolean;
   onClose: () => void;
   onNotify: (message: string, tone?: 'success' | 'error') => void;
@@ -107,6 +107,7 @@ export function SettingsPanel({
             <span><b>{counts.workspaces}</b> 空间</span>
             <span><b>{counts.collections}</b> 集合</span>
             <span><b>{counts.items}</b> 条资料</span>
+            <span><b>{counts.reminders}</b> 个提醒</span>
           </div>
         </section>
 

@@ -21,14 +21,17 @@ import { CLOUD_SYNC_MESSAGE } from '../../lib/cloud-sync-messages';
 import {
   archiveItem,
   clearAllData,
+  completeReminder,
   createBookmark,
   createCollection,
   createNote,
+  createReminder,
   createRequest,
   createWorkspace,
   db,
   deleteCollection,
   deleteItem,
+  deleteReminder,
   deleteWorkspace,
   ensureSeedData,
   moveItem,
@@ -43,6 +46,7 @@ import {
   updateBookmark,
   updateBookmarkNote,
   updateNote,
+  updateReminder,
   updateRequest,
   updateAppSetting,
 } from '../../lib/db';
@@ -57,9 +61,11 @@ import type {
   SearchResult,
   Workspace,
 } from '../../lib/types';
+import { dateKey, resolveReminder, type ReminderInput } from '../../lib/reminders';
 import { Board } from './components/Board';
 import { BookmarkDialog, BookmarkNoteDialog, ConfirmDialog, NoteDialog, RequestDialog } from './components/Dialogs';
 import { OpenTabsPanel } from './components/OpenTabsPanel';
+import { RemindersPanel } from './components/RemindersPanel';
 import { SearchPalette } from './components/SearchPalette';
 import { SettingsPanel } from './components/SettingsPanel';
 import { Sidebar } from './components/Sidebar';
@@ -93,6 +99,7 @@ function App() {
   const workspaces = useLiveQuery(() => db.workspaces.orderBy('order').toArray(), []) ?? [];
   const collections = useLiveQuery(() => db.collections.orderBy('order').toArray(), []) ?? [];
   const items = useLiveQuery(() => db.items.toArray(), []) ?? [];
+  const reminders = useLiveQuery(() => db.reminders.toArray(), []) ?? [];
   const settings = useLiveQuery(() => db.settings.get('app'), []);
   const [openTabs, setOpenTabs] = useState<OpenTab[]>([]);
   const [ready, setReady] = useState(false);
@@ -103,6 +110,8 @@ function App() {
   const [noteDialog, setNoteDialog] = useState<NoteItem>();
   const [requestDialog, setRequestDialog] = useState<RequestItem>();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [remindersOpen, setRemindersOpen] = useState(false);
+  const [today, setToday] = useState(() => dateKey());
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchCategory, setSearchCategory] = useState<SearchCategory>('all');
@@ -152,14 +161,24 @@ function App() {
     window.clearTimeout(hoverTimer.current);
   }, []);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setToday(dateKey()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const syncFingerprint = useMemo(
     () => [
       ...workspaces.map((entry) => `${entry.id}:${entry.updatedAt}`),
       ...collections.map((entry) => `${entry.id}:${entry.updatedAt}`),
       ...items.map((entry) => `${entry.id}:${entry.updatedAt}`),
+      ...reminders.map((entry) => `${entry.id}:${entry.updatedAt}`),
     ].sort().join('|'),
-    [workspaces, collections, items],
+    [workspaces, collections, items, reminders],
   );
+
+  const alertingReminderCount = useMemo(() => reminders.reduce((count, reminder) => (
+    resolveReminder(reminder, today)?.isAlerting ? count + 1 : count
+  ), 0), [reminders, today]);
 
   useEffect(() => {
     if (!ready || !syncFingerprint) return;
@@ -169,6 +188,7 @@ function App() {
     }
     if (syncFingerprintRef.current === syncFingerprint) return;
     syncFingerprintRef.current = syncFingerprint;
+    if (!browser.runtime?.sendMessage) return;
     void browser.runtime.sendMessage({ type: CLOUD_SYNC_MESSAGE.schedule }).catch(() => undefined);
   }, [ready, syncFingerprint]);
 
@@ -520,7 +540,9 @@ function App() {
           }}
           onOpenSearch={() => setSearchOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
+          onOpenReminders={() => setRemindersOpen(true)}
           onToggleCollapsed={() => void updateAppSetting('leftPanelCollapsed', !(settings?.leftPanelCollapsed || false))}
+          reminderCount={alertingReminderCount}
         />
 
         <Board
@@ -637,7 +659,7 @@ function App() {
 
       <SettingsPanel
         open={settingsOpen}
-        counts={{ workspaces: workspaces.length, collections: collections.length, items: items.length }}
+        counts={{ workspaces: workspaces.length, collections: collections.length, items: items.length, reminders: reminders.length }}
         compactMode={settings?.compactMode ?? false}
         onClose={() => setSettingsOpen(false)}
         onNotify={notify}
@@ -647,10 +669,22 @@ function App() {
         }}
         onRequestClear={() => setConfirm({
           title: '清空全部本地数据？',
-          description: '所有工作区、集合、书签、记事和设置都会被删除。请先导出 JSON 备份。',
+          description: '所有工作区、集合、书签、记事、提醒和设置都会被删除。请先导出 JSON 备份。',
           confirmLabel: '清空数据',
           onConfirm: async () => { await clearAllData(); setConfirm(undefined); setSettingsOpen(false); notify('本地数据已清空'); },
         })}
+      />
+
+      <RemindersPanel
+        open={remindersOpen}
+        reminders={reminders}
+        today={today}
+        onClose={() => setRemindersOpen(false)}
+        onCreate={async (input: ReminderInput) => { await createReminder(input); }}
+        onUpdate={async (id: string, input: ReminderInput) => { await updateReminder(id, input); }}
+        onComplete={async (id: string) => { await completeReminder(id, today); }}
+        onDelete={async (id: string) => { await deleteReminder(id); }}
+        onNotify={notify}
       />
 
       <SearchPalette

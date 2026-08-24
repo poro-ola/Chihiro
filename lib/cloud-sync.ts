@@ -4,6 +4,7 @@ import type {
   Collection,
   DeletedEntity,
   DeletedEntityType,
+  Reminder,
   Workspace,
 } from './types';
 import type { CloudSyncStatus } from './cloud-sync-messages';
@@ -33,6 +34,7 @@ export interface ChihiroSyncSnapshot {
   workspaces: Workspace[];
   collections: Collection[];
   items: BoardItem[];
+  reminders?: Reminder[];
   deletedEntities: DeletedEntity[];
 }
 
@@ -162,6 +164,9 @@ function snapshotContent(snapshot: ChihiroSyncSnapshot) {
     workspaces: [...snapshot.workspaces].sort((left, right) => left.id.localeCompare(right.id)),
     collections: [...snapshot.collections].sort((left, right) => left.id.localeCompare(right.id)),
     items: [...snapshot.items].sort((left, right) => left.id.localeCompare(right.id)),
+    ...(snapshot.reminders
+      ? { reminders: [...snapshot.reminders].sort((left, right) => left.id.localeCompare(right.id)) }
+      : {}),
     deletedEntities: [...snapshot.deletedEntities].sort((left, right) => left.key.localeCompare(right.key)),
   };
 }
@@ -201,12 +206,16 @@ function assertSnapshot(value: unknown): asserts value is ChihiroSyncSnapshot {
   for (const key of ['workspaces', 'collections', 'items', 'deletedEntities'] as const) {
     if (!Array.isArray(candidate[key])) throw new Error(`云端快照缺少 ${key}`);
   }
+  if (candidate.reminders !== undefined && !Array.isArray(candidate.reminders)) {
+    throw new Error('云端快照包含无效 reminders');
+  }
 
   const workspaces = candidate.workspaces as Workspace[];
   const collections = candidate.collections as Collection[];
   const items = candidate.items as BoardItem[];
+  const reminders = candidate.reminders ?? [];
   const deletedEntities = candidate.deletedEntities as DeletedEntity[];
-  if (workspaces.length + collections.length + items.length + deletedEntities.length > 100_000) {
+  if (workspaces.length + collections.length + items.length + reminders.length + deletedEntities.length > 100_000) {
     throw new Error('云端快照记录数超出限制');
   }
   const validEntity = (entry: { id?: unknown; updatedAt?: unknown }) =>
@@ -214,17 +223,19 @@ function assertSnapshot(value: unknown): asserts value is ChihiroSyncSnapshot {
     entry.id.length > 0 &&
     typeof entry.updatedAt === 'string' &&
     !Number.isNaN(Date.parse(entry.updatedAt));
-  if (![...workspaces, ...collections, ...items].every(validEntity)) {
+  if (![...workspaces, ...collections, ...items, ...reminders].every(validEntity)) {
     throw new Error('云端快照包含无效实体');
   }
   const workspaceIds = new Set(workspaces.map((entry) => entry.id));
   const collectionIds = new Set(collections.map((entry) => entry.id));
   const itemIds = new Set(items.map((entry) => entry.id));
+  const reminderIds = new Set(reminders.map((entry) => entry.id));
   const deletedKeys = new Set(deletedEntities.map((entry) => entry.key));
   if (
     workspaceIds.size !== workspaces.length ||
     collectionIds.size !== collections.length ||
     itemIds.size !== items.length ||
+    reminderIds.size !== reminders.length ||
     deletedKeys.size !== deletedEntities.length
   ) {
     throw new Error('云端快照包含重复实体');
@@ -236,7 +247,7 @@ function assertSnapshot(value: unknown): asserts value is ChihiroSyncSnapshot {
     throw new Error('云端快照包含无效资料关系');
   }
   if (deletedEntities.some((entry) =>
-    !['workspace', 'collection', 'item'].includes(entry.entityType) ||
+    !['workspace', 'collection', 'item', 'reminder'].includes(entry.entityType) ||
     entry.key !== `${entry.entityType}:${entry.entityId}` ||
     Number.isNaN(Date.parse(entry.deletedAt)))) {
     throw new Error('云端快照包含无效删除记录');
@@ -276,10 +287,11 @@ async function decryptSnapshot(envelope: EncryptedSyncEnvelope, passphrase: stri
 
 async function createLocalSnapshot(deviceId: string): Promise<ChihiroSyncSnapshot> {
   await ensureSeedData();
-  const [workspaces, collections, items, deletedEntities] = await Promise.all([
+  const [workspaces, collections, items, reminders, deletedEntities] = await Promise.all([
     db.workspaces.toArray(),
     db.collections.toArray(),
     db.items.toArray(),
+    db.reminders.toArray(),
     db.deletedEntities.toArray(),
   ]);
   return {
@@ -291,6 +303,7 @@ async function createLocalSnapshot(deviceId: string): Promise<ChihiroSyncSnapsho
     workspaces,
     collections,
     items,
+    reminders,
     deletedEntities,
   };
 }
@@ -298,7 +311,8 @@ async function createLocalSnapshot(deviceId: string): Promise<ChihiroSyncSnapsho
 function entityTable(entityType: DeletedEntityType) {
   if (entityType === 'workspace') return db.workspaces;
   if (entityType === 'collection') return db.collections;
-  return db.items;
+  if (entityType === 'item') return db.items;
+  return db.reminders;
 }
 
 async function mergeRemoteSnapshot(remote: ChihiroSyncSnapshot) {
@@ -317,7 +331,7 @@ async function mergeRemoteSnapshot(remote: ChihiroSyncSnapshot) {
     localCollections[0]?.name === '收件箱' &&
     localCollections[0]?.workspaceId === localWorkspaces[0]?.id;
 
-  await db.transaction('rw', [db.workspaces, db.collections, db.items, db.deletedEntities], async () => {
+  await db.transaction('rw', [db.workspaces, db.collections, db.items, db.reminders, db.deletedEntities], async () => {
     if (pristineSeed && (remote.workspaces.length > 0 || remote.collections.length > 0 || remote.items.length > 0)) {
       await db.workspaces.clear();
       await db.collections.clear();
@@ -332,7 +346,7 @@ async function mergeRemoteSnapshot(remote: ChihiroSyncSnapshot) {
 
     const mergeEntries = async <T extends { id: string; updatedAt: string }>(
       entityType: DeletedEntityType,
-      table: typeof db.workspaces | typeof db.collections | typeof db.items,
+      table: typeof db.workspaces | typeof db.collections | typeof db.items | typeof db.reminders,
       entries: T[],
     ) => {
       for (const entry of entries) {
@@ -348,6 +362,7 @@ async function mergeRemoteSnapshot(remote: ChihiroSyncSnapshot) {
     await mergeEntries('workspace', db.workspaces, remote.workspaces);
     await mergeEntries('collection', db.collections, remote.collections);
     await mergeEntries('item', db.items, remote.items);
+    await mergeEntries('reminder', db.reminders, remote.reminders ?? []);
   });
   await ensureSeedData();
 }
