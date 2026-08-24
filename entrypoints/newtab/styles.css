@@ -2415,8 +2415,7 @@ kbd {
   white-space: nowrap;
 }
 
-.reminder-form__grid,
-.reminder-lunar-row {
+.reminder-form__grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
@@ -2447,24 +2446,22 @@ kbd {
   box-shadow: 0 1px 4px rgba(65, 53, 39, 0.12);
 }
 
-.reminder-lunar-row {
-  grid-template-columns: 1fr 1fr auto;
-  align-items: end;
-}
-
-.reminder-leap-check {
+.reminder-lunar-fields {
   display: flex;
-  height: 38px;
-  align-items: center;
+  flex-direction: column;
   gap: 6px;
-  margin-bottom: 14px;
-  color: var(--ink-soft);
-  font-size: 10px;
-  white-space: nowrap;
 }
 
-.reminder-leap-check input {
-  accent-color: var(--accent);
+.reminder-lunar-row {
+  display: grid;
+  grid-template-columns: 1.12fr 1fr 1fr;
+  gap: 12px;
+}
+
+.reminder-lunar-fields > small {
+  color: var(--ink-faint);
+  font-size: 9px;
+  line-height: 1.5;
 }
 
 .reminder-advance-field > div {

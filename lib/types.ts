@@ -81,6 +81,7 @@ export interface Reminder {
   repeat: ReminderRepeat;
   calendar: ReminderCalendar;
   date?: string;
+  lunarYear?: number;
   lunarMonth?: number;
   lunarDay?: number;
   lunarLeapMonth?: boolean;

@@ -7,6 +7,8 @@ import type {
 
 export const REMINDER_TITLE_MAX_LENGTH = 80;
 export const REMINDER_ADVANCE_DAYS_MAX = 90;
+export const LUNAR_YEAR_MIN = 1900;
+export const LUNAR_YEAR_MAX = 2100;
 
 export interface ReminderInput {
   title: string;
@@ -14,6 +16,7 @@ export interface ReminderInput {
   repeat: ReminderRepeat;
   calendar: ReminderCalendar;
   date?: string;
+  lunarYear?: number;
   lunarMonth?: number;
   lunarDay?: number;
   lunarLeapMonth?: boolean;
@@ -191,6 +194,7 @@ export function prepareReminderInput(input: ReminderInput): ReminderInput {
       ...input,
       title,
       calendar: 'solar',
+      lunarYear: undefined,
       lunarMonth: undefined,
       lunarDay: undefined,
       lunarLeapMonth: undefined,
@@ -202,12 +206,16 @@ export function prepareReminderInput(input: ReminderInput): ReminderInput {
     return {
       ...input,
       title,
+      lunarYear: undefined,
       lunarMonth: undefined,
       lunarDay: undefined,
       lunarLeapMonth: undefined,
     };
   }
 
+  if (!Number.isInteger(input.lunarYear) || (input.lunarYear ?? 0) < LUNAR_YEAR_MIN || (input.lunarYear ?? 0) > LUNAR_YEAR_MAX) {
+    throw new Error(`请输入 ${LUNAR_YEAR_MIN}–${LUNAR_YEAR_MAX} 之间的农历年份`);
+  }
   if (!Number.isInteger(input.lunarMonth) || (input.lunarMonth ?? 0) < 1 || (input.lunarMonth ?? 0) > 12) {
     throw new Error('请选择有效农历月份');
   }

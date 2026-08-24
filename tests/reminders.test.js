@@ -83,6 +83,7 @@ describe('reminder schedules', () => {
       repeat: 'yearly',
       calendar: 'lunar',
       date: undefined,
+      lunarYear: 1990,
       lunarMonth: 1,
       lunarDay: 1,
       advanceDays: 7,
@@ -92,6 +93,24 @@ describe('reminder schedules', () => {
       dueDate: '2026-02-17',
       remindFrom: '2026-02-10',
       isAlerting: true,
+    });
+  });
+
+  test('accepts a lunar year without asking the user to choose leap month', () => {
+    expect(prepareReminderInput({
+      title: '妈妈生日',
+      kind: 'anniversary',
+      repeat: 'yearly',
+      calendar: 'lunar',
+      lunarYear: 1968,
+      lunarMonth: 8,
+      lunarDay: 15,
+      advanceDays: 7,
+    })).toMatchObject({
+      lunarYear: 1968,
+      lunarMonth: 8,
+      lunarDay: 15,
+      lunarLeapMonth: false,
     });
   });
 
@@ -112,5 +131,15 @@ describe('reminder schedules', () => {
       date: '2026-09-20',
       advanceDays: 91,
     })).toThrow('提前天数需在 0–90 之间');
+    expect(() => prepareReminderInput({
+      title: '年份无效',
+      kind: 'anniversary',
+      repeat: 'yearly',
+      calendar: 'lunar',
+      lunarYear: 1899,
+      lunarMonth: 1,
+      lunarDay: 1,
+      advanceDays: 7,
+    })).toThrow('请输入 1900–2100 之间的农历年份');
   });
 });

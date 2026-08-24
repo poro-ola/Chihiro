@@ -11,7 +11,13 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { dateKey, resolveReminder, type ReminderInput } from '../../../lib/reminders';
+import {
+  dateKey,
+  LUNAR_YEAR_MAX,
+  LUNAR_YEAR_MIN,
+  resolveReminder,
+  type ReminderInput,
+} from '../../../lib/reminders';
 import type { Reminder, ReminderKind } from '../../../lib/types';
 
 interface RemindersPanelProps {
@@ -42,12 +48,14 @@ const KIND_OPTIONS: { value: ReminderKind; label: string; description: string }[
 ];
 
 function defaultForm(): FormState {
+  const currentYear = Number(dateKey().slice(0, 4));
   return {
     title: '',
     kind: 'todo',
     repeat: 'once',
     calendar: 'solar',
     date: dateKey(),
+    lunarYear: currentYear,
     lunarMonth: 1,
     lunarDay: 1,
     lunarLeapMonth: false,
@@ -62,6 +70,7 @@ function formFromReminder(reminder: Reminder): FormState {
     repeat: reminder.repeat,
     calendar: reminder.calendar,
     date: reminder.date || dateKey(),
+    lunarYear: reminder.lunarYear || Number(reminder.createdAt.slice(0, 4)) || Number(dateKey().slice(0, 4)),
     lunarMonth: reminder.lunarMonth || 1,
     lunarDay: reminder.lunarDay || 1,
     lunarLeapMonth: reminder.lunarLeapMonth || false,
@@ -189,7 +198,7 @@ export function RemindersPanel({
         </span>
         <em>
           {reminder.repeat === 'yearly'
-            ? `每年 · ${reminder.calendar === 'lunar' ? `${reminder.lunarLeapMonth ? '闰' : ''}${LUNAR_MONTHS[(reminder.lunarMonth || 1) - 1]}${LUNAR_DAYS[(reminder.lunarDay || 1) - 1]}` : '阳历'}`
+            ? `每年 · ${reminder.calendar === 'lunar' ? `${reminder.lunarYear ? `${reminder.lunarYear}年` : ''}${LUNAR_MONTHS[(reminder.lunarMonth || 1) - 1]}${LUNAR_DAYS[(reminder.lunarDay || 1) - 1]}` : '阳历'}`
             : '一次性'}
           {reminder.advanceDays > 0 ? ` · 提前 ${reminder.advanceDays} 天` : ' · 当天提醒'}
         </em>
@@ -313,23 +322,33 @@ export function RemindersPanel({
             </div>
 
             {form.repeat === 'yearly' && form.calendar === 'lunar' ? (
-              <div className="reminder-lunar-row">
-                <label className="reminder-field">
-                  <span>农历月</span>
-                  <select value={form.lunarMonth} onChange={(event) => setForm((current) => ({ ...current, lunarMonth: Number(event.target.value) }))}>
-                    {LUNAR_MONTHS.map((label, index) => <option value={index + 1} key={label}>{label}</option>)}
-                  </select>
-                </label>
-                <label className="reminder-field">
-                  <span>农历日</span>
-                  <select value={form.lunarDay} onChange={(event) => setForm((current) => ({ ...current, lunarDay: Number(event.target.value) }))}>
-                    {LUNAR_DAYS.map((label, index) => <option value={index + 1} key={label}>{label}</option>)}
-                  </select>
-                </label>
-                <label className="reminder-leap-check">
-                  <input type="checkbox" checked={form.lunarLeapMonth} onChange={(event) => setForm((current) => ({ ...current, lunarLeapMonth: event.target.checked }))} />
-                  <span>闰月</span>
-                </label>
+              <div className="reminder-lunar-fields">
+                <div className="reminder-lunar-row">
+                  <label className="reminder-field">
+                    <span>农历年</span>
+                    <input
+                      type="number"
+                      min={LUNAR_YEAR_MIN}
+                      max={LUNAR_YEAR_MAX}
+                      inputMode="numeric"
+                      value={form.lunarYear}
+                      onChange={(event) => setForm((current) => ({ ...current, lunarYear: Number(event.target.value) }))}
+                    />
+                  </label>
+                  <label className="reminder-field">
+                    <span>农历月</span>
+                    <select value={form.lunarMonth} onChange={(event) => setForm((current) => ({ ...current, lunarMonth: Number(event.target.value) }))}>
+                      {LUNAR_MONTHS.map((label, index) => <option value={index + 1} key={label}>{label}</option>)}
+                    </select>
+                  </label>
+                  <label className="reminder-field">
+                    <span>农历日</span>
+                    <select value={form.lunarDay} onChange={(event) => setForm((current) => ({ ...current, lunarDay: Number(event.target.value) }))}>
+                      {LUNAR_DAYS.map((label, index) => <option value={index + 1} key={label}>{label}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <small>填写农历日期即可，以后每年由千寻自动换算提醒日期。</small>
               </div>
             ) : (
               <label className="reminder-field">
