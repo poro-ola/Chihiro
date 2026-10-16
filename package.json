@@ -2,7 +2,7 @@
   "name": "chihiro",
   "description": "把当前标签、书签和记事整理进一个本地优先的资料工作台。",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "scripts": {
     "dev": "wxt",
