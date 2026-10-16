@@ -1,11 +1,13 @@
 import {
   CONTENT_NOTES_MESSAGE,
+  selectPageNotes,
   type ContentNotesRequest,
   type ContentNotesResponse,
   type ContentNotesSnapshot,
 } from '../lib/content-notes';
-import { db, ensureSeedData, normalizeUrl, updateBookmarkNote } from '../lib/db';
+import { db, ensureSeedData, updateBookmarkNote } from '../lib/db';
 import { CURL_MESSAGE, executeCurl, type CurlExecutionResult } from '../lib/curl';
+import { createCurlFetch } from '../lib/curl-transport';
 import {
   CLOUD_SYNC_MESSAGE,
   type CloudSyncRequest,
@@ -18,7 +20,6 @@ import {
   performCloudSync,
   scheduleCloudSync,
 } from '../lib/cloud-sync';
-import type { BookmarkItem } from '../lib/types';
 
 const APP_ROW_ID = 'app' as const;
 const CONTENT_NOTE_REQUEST_TYPES = [
@@ -32,21 +33,14 @@ const CLOUD_SYNC_ALARM = 'chihiro-cloud-sync';
 
 async function getPageNotes(url: string): Promise<ContentNotesSnapshot> {
   await ensureSeedData();
-  const normalizedUrl = normalizeUrl(url);
   const [items, settings] = await Promise.all([
-    db.items.where('normalizedUrl').equals(normalizedUrl).toArray(),
+    db.items.where('type').equals('bookmark').toArray(),
     db.settings.get(APP_ROW_ID),
   ]);
 
   return {
     buttonRatio: settings?.contentNoteButtonRatio ?? 0.5,
-    records: items
-      .filter((item): item is BookmarkItem => item.type === 'bookmark')
-      .sort((a, b) => Number(Boolean(a.archivedAt)) - Number(Boolean(b.archivedAt)) || b.updatedAt.localeCompare(a.updatedAt))
-      .map((item) => ({
-        id: item.id,
-        note: item.note || '',
-      })),
+    records: selectPageNotes(items, url),
   };
 }
 
@@ -102,9 +96,10 @@ async function handleCloudSyncMessage(message: CloudSyncRequest): Promise<CloudS
 }
 
 export default defineBackground(() => {
+  const curlFetch = createCurlFetch(browser.runtime.id, browser.declarativeNetRequest);
   browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message && typeof message === 'object' && message.type === CURL_MESSAGE.execute) {
-      void executeCurl(typeof message.command === 'string' ? message.command : '')
+      void executeCurl(typeof message.command === 'string' ? message.command : '', curlFetch)
         .then((result: CurlExecutionResult) => sendResponse(result));
       return true;
     }

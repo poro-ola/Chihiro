@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ArrowUpRight,
-  GripVertical,
   MessageSquareText,
   RefreshCw,
   StickyNote,
@@ -14,9 +13,11 @@ import {
   type ContentNotesResponse,
   type ContentNotesSnapshot,
 } from '../../lib/content-notes';
-import { BOOKMARK_NOTE_MAX_LENGTH } from '../../lib/types';
+import { MarkdownEditor } from '../../components/MarkdownEditor';
+import { AutosaveStatus } from '../../components/AutosaveStatus';
+import { useAutosave } from '../../components/useAutosave';
 
-const BUTTON_SIZE = 48;
+const BUTTON_SIZE = window.matchMedia('(pointer: coarse)').matches ? 44 : 28;
 const EDGE_GAP = 14;
 
 function clampButtonTop(value: number) {
@@ -39,93 +40,28 @@ async function sendContentNotesMessage<T>(message: ContentNotesRequest): Promise
   return response.data;
 }
 
-function NoteEditor({
-  record,
-  index,
-  onSaved,
-}: {
+type FlushNote = () => Promise<boolean>;
+
+function NoteEditor({ record, index, onSaved, registerFlush }: {
   record: ContentNoteRecord;
   index: number;
   onSaved: (note: string) => void;
+  registerFlush: (id: string, flush: FlushNote) => () => void;
 }) {
-  const [draft, setDraft] = useState(record.note);
-  const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const saveTimerRef = useRef<number | undefined>(undefined);
-  const draftRef = useRef(record.note);
-  const lastSavedRef = useRef(record.note);
-  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
-  const onSavedRef = useRef(onSaved);
-
-  onSavedRef.current = onSaved;
-
-  useEffect(() => {
-    setDraft(record.note);
-    draftRef.current = record.note;
-    lastSavedRef.current = record.note;
-    setStatus('idle');
-  }, [record.id]);
-
-  const persist = useCallback(async (value: string) => {
-    setStatus('saving');
-    const task = saveQueueRef.current
-      .catch(() => undefined)
-      .then(() => sendContentNotesMessage<void>({
-        type: CONTENT_NOTES_MESSAGE.save,
-        itemId: record.id,
-        note: value,
-      }));
-    saveQueueRef.current = task;
-
-    try {
-      await task;
-      lastSavedRef.current = value;
-      onSavedRef.current(value.trim());
-      if (draftRef.current === value) setStatus('saved');
-    } catch {
-      if (draftRef.current === value) setStatus('error');
-    }
-  }, [record.id]);
-
-  useEffect(() => () => {
-    window.clearTimeout(saveTimerRef.current);
-    const latest = draftRef.current;
-    if (latest === lastSavedRef.current) return;
-
-    saveQueueRef.current = saveQueueRef.current
-      .catch(() => undefined)
-      .then(() => sendContentNotesMessage<void>({
-        type: CONTENT_NOTES_MESSAGE.save,
-        itemId: record.id,
-        note: latest,
-      }));
-  }, [record.id]);
+  const autosave = useAutosave(record.note, async (value) => {
+    await sendContentNotesMessage<void>({ type: CONTENT_NOTES_MESSAGE.save, itemId: record.id, note: value });
+    onSaved(value);
+  });
+  useEffect(() => registerFlush(record.id, autosave.flush), [record.id, registerFlush, autosave.flush]);
 
   return (
     <article className="note-card">
-      <textarea
-        value={draft}
-        maxLength={BOOKMARK_NOTE_MAX_LENGTH}
-        placeholder="写下一条想法、结论或待办…"
-        aria-label={`第 ${index + 1} 条网页备注`}
-        autoFocus={index === 0}
-        onChange={(event) => {
-          const nextValue = event.target.value;
-          setDraft(nextValue);
-          draftRef.current = nextValue;
-          setStatus('idle');
-          window.clearTimeout(saveTimerRef.current);
-          saveTimerRef.current = window.setTimeout(() => void persist(nextValue), 400);
-        }}
-      />
-      <footer className="note-card__status" aria-live="polite">
-        <span className={status === 'error' ? 'is-error' : undefined}>
-          {status === 'saving' && '保存中…'}
-          {status === 'saved' && '已保存'}
-          {status === 'error' && '保存失败，将在关闭时重试'}
-          {status === 'idle' && '自动保存'}
-        </span>
-        <em>{draft.length.toLocaleString()} / {BOOKMARK_NOTE_MAX_LENGTH.toLocaleString()}</em>
-      </footer>
+      <a className="note-card__source" href={record.url} target="_blank" rel="noopener noreferrer" title={record.url}>
+        {record.title || record.url}<ArrowUpRight size={12} aria-hidden="true" />
+      </a>
+      <MarkdownEditor value={autosave.value} onChange={autosave.change}
+        label={`第 ${index + 1} 条网页备注`} autoFocus={index === 0} />
+      <AutosaveStatus {...autosave} onRetry={autosave.flush} />
     </article>
   );
 }
@@ -135,7 +71,24 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [records, setRecords] = useState<ContentNoteRecord[]>([]);
-  const [pageUrl, setPageUrl] = useState(window.location.href);
+  const [host, setHost] = useState(window.location.host);
+  const flushers = useRef(new Map<string, FlushNote>());
+  const requestId = useRef(0);
+  const openRef = useRef(false);
+
+  const registerFlush = useCallback((id: string, flush: FlushNote) => {
+    flushers.current.set(id, flush);
+    return () => { flushers.current.delete(id); };
+  }, []);
+
+  const closePanel = useCallback(async () => {
+    const saved = await Promise.all([...flushers.current.values()].map((flush) => flush()));
+    if (saved.every(Boolean)) {
+      openRef.current = false;
+      setIsOpen(false);
+      setRecords((current) => current.filter((record) => record.note.trim()));
+    }
+  }, []);
   const [buttonTop, setButtonTop] = useState(() => topFromRatio(0.5));
   const positionLoaded = useRef(false);
   const suppressClick = useRef(false);
@@ -147,6 +100,7 @@ export default function App() {
   } | undefined>(undefined);
 
   const loadNotes = useCallback(async (url = window.location.href, showLoading = true) => {
+    const currentRequest = ++requestId.current;
     if (showLoading) setIsLoading(true);
     setError('');
     try {
@@ -154,36 +108,44 @@ export default function App() {
         type: CONTENT_NOTES_MESSAGE.get,
         url,
       });
+      if (currentRequest !== requestId.current || openRef.current) return;
       setRecords(snapshot.records);
       if (!positionLoaded.current) {
         positionLoaded.current = true;
         setButtonTop(topFromRatio(snapshot.buttonRatio));
       }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : '无法读取网页备注');
+      if (currentRequest === requestId.current) setError(reason instanceof Error ? reason.message : '无法读取网页备注');
     } finally {
-      if (showLoading) setIsLoading(false);
+      if (currentRequest === requestId.current) setIsLoading(false);
     }
   }, []);
 
+  const openPanel = useCallback(async () => {
+    await loadNotes(window.location.href, false);
+    openRef.current = true;
+    setIsOpen(true);
+  }, [loadNotes]);
+
   useEffect(() => {
-    void loadNotes(pageUrl);
-  }, [loadNotes, pageUrl]);
+    if (!isOpen) void loadNotes(window.location.href);
+  }, [loadNotes, host, isOpen]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      if (window.location.href !== pageUrl) setPageUrl(window.location.href);
-    }, 800);
+      if (window.location.host !== host) setHost(window.location.host);
+      if (!openRef.current && document.visibilityState === 'visible') void loadNotes(window.location.href, false);
+    }, 2500);
     return () => window.clearInterval(timer);
-  }, [pageUrl]);
+  }, [host, loadNotes]);
 
   useEffect(() => {
     const handleResize = () => setButtonTop((current) => clampButtonTop(current));
     const handleFocus = () => {
-      if (isOpen) void loadNotes(window.location.href, false);
+      if (!openRef.current) void loadNotes(window.location.href, false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setIsOpen(false);
+      if (event.key === 'Escape' && !event.isComposing) void closePanel();
     };
     window.addEventListener('resize', handleResize);
     window.addEventListener('focus', handleFocus);
@@ -193,23 +155,18 @@ export default function App() {
       window.removeEventListener('focus', handleFocus);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isOpen, loadNotes]);
+  }, [closePanel, loadNotes]);
 
   useEffect(() => {
     const listener = (message: unknown) => {
       if (message && typeof message === 'object' && 'type' in message && message.type === CONTENT_NOTES_MESSAGE.toggle) {
-        setIsOpen((current) => !current);
+        if (openRef.current) void closePanel();
+        else void openPanel();
       }
     };
     browser.runtime.onMessage.addListener(listener);
     return () => browser.runtime.onMessage.removeListener(listener);
-  }, []);
-
-  useEffect(() => {
-    if (isOpen) {
-      void loadNotes(window.location.href, false);
-    }
-  }, [isOpen, loadNotes]);
+  }, [closePanel, openPanel]);
 
   const saveButtonPosition = (top: number) => {
     void sendContentNotesMessage({
@@ -221,10 +178,16 @@ export default function App() {
   return (
     <div className="content-notes-shell" data-open={isOpen || undefined}>
       {isOpen && (
-        <aside className="content-notes-panel" role="dialog" aria-modal="false" aria-label="千寻网页备注">
+        <aside className="content-notes-panel" role="dialog" aria-modal="false" aria-label="千寻网页备注"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && !event.nativeEvent.isComposing) {
+              event.stopPropagation();
+              void closePanel();
+            }
+          }}>
           <header className="content-notes-header">
             <h2><StickyNote size={18} aria-hidden="true" /> 网页备注</h2>
-            <button className="icon-button" type="button" onClick={() => setIsOpen(false)} aria-label="关闭网页备注">
+            <button className="icon-button" type="button" onClick={() => void closePanel()} aria-label="关闭网页备注">
               <X size={18} />
             </button>
           </header>
@@ -243,7 +206,7 @@ export default function App() {
 
             {!isLoading && !error && records.length === 0 && (
               <div className="content-state">
-                <p>暂无备注。先在千寻中保存这个网页。</p>
+                <p>这个站点暂无备注。可在千寻中为书签添加备注。</p>
                 <button type="button" onClick={() => void sendContentNotesMessage({ type: CONTENT_NOTES_MESSAGE.openWorkspace })}>
                   打开千寻 <ArrowUpRight size={14} />
                 </button>
@@ -257,6 +220,7 @@ export default function App() {
                     key={record.id}
                     record={record}
                     index={index}
+                    registerFlush={registerFlush}
                     onSaved={(note) => setRecords((current) => current.map((item) => item.id === record.id ? { ...item, note } : item))}
                   />
                 ))}
@@ -266,7 +230,7 @@ export default function App() {
         </aside>
       )}
 
-      <button
+      {(isOpen || records.some((record) => record.note.trim())) && <button
         className="content-notes-trigger"
         type="button"
         style={{ top: buttonTop }}
@@ -306,7 +270,9 @@ export default function App() {
           dragState.current = undefined;
         }}
         onClick={() => {
-          if (!suppressClick.current) setIsOpen((current) => !current);
+          if (suppressClick.current) return;
+          if (isOpen) void closePanel();
+          else void openPanel();
         }}
         onKeyDown={(event) => {
           if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
@@ -316,9 +282,8 @@ export default function App() {
           saveButtonPosition(nextTop);
         }}
       >
-        <GripVertical className="content-notes-trigger__grip" size={12} aria-hidden="true" />
-        <MessageSquareText size={20} aria-hidden="true" />
-      </button>
+        <MessageSquareText size={15} aria-hidden="true" />
+      </button>}
     </div>
   );
 }

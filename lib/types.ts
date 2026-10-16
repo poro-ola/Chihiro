@@ -1,6 +1,5 @@
 export type ItemType = 'bookmark' | 'note' | 'request';
 
-export const BOOKMARK_NOTE_MAX_LENGTH = 2_000;
 export const REQUEST_COMMAND_MAX_LENGTH = 20_000;
 
 export interface Workspace {

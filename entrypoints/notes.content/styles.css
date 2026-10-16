@@ -48,25 +48,26 @@ textarea:focus-visible {
   position: fixed;
   right: 14px;
   display: grid;
-  width: 48px;
-  height: 48px;
-  grid-template-columns: 8px 1fr;
+  width: 28px;
+  height: 28px;
   align-items: center;
   justify-items: center;
-  padding: 0 7px 0 4px;
-  border: 1px solid #aa4635;
-  border-radius: 9px 9px 9px 3px;
+  padding: 0;
+  border: 1px solid var(--ch-line-strong);
+  border-radius: 7px;
   color: #fffaf3;
   background: var(--ch-accent);
-  box-shadow: 3px 4px 0 rgba(121, 87, 59, 0.24), 0 12px 28px rgba(68, 47, 30, 0.16);
+  box-shadow: 0 2px 8px rgba(68, 47, 30, 0.12);
+  opacity: 0.25;
   cursor: ns-resize;
   touch-action: none;
-  transition: color 140ms ease, background 140ms ease, box-shadow 140ms ease, transform 140ms cubic-bezier(.22, 1, .36, 1);
+  transition: opacity 140ms ease, background 140ms ease, transform 140ms ease;
 }
 
-.content-notes-trigger:hover {
+.content-notes-trigger:hover,
+.content-notes-trigger:focus-visible {
+  opacity: 1;
   background: var(--ch-accent-dark);
-  box-shadow: 2px 3px 0 rgba(121, 87, 59, 0.25), 0 15px 34px rgba(68, 47, 30, 0.2);
   transform: translateY(-1px);
 }
 
@@ -75,6 +76,7 @@ textarea:focus-visible {
 }
 
 .content-notes-shell[data-open] .content-notes-trigger {
+  opacity: 1;
   color: var(--ch-accent-dark);
   background: var(--ch-paper);
 }
@@ -88,9 +90,9 @@ textarea:focus-visible {
   position: fixed;
   z-index: 410;
   top: 14px;
-  right: 76px;
+  right: 54px;
   display: grid;
-  width: min(360px, calc(100vw - 92px));
+  width: min(400px, calc(100vw - 68px));
   max-height: calc(100vh - 28px);
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
@@ -221,6 +223,21 @@ textarea:focus-visible {
   border-bottom: 0;
 }
 
+.note-card__source {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding-top: 14px;
+  color: var(--ch-ink-soft);
+  font-size: 11px;
+  line-height: 1.5;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.note-card__source svg { flex-shrink: 0; }
+.note-card__source:hover { color: var(--ch-accent-dark); text-decoration: underline; }
+
 .note-card textarea {
   display: block;
   width: 100%;
@@ -283,9 +300,11 @@ textarea:focus-visible {
 
 @media (pointer: coarse) {
   .content-notes-trigger {
-    width: 52px;
-    height: 52px;
+    width: 44px;
+    height: 44px;
+    opacity: 0.65;
   }
+  .content-notes-panel { right: 70px; width: min(400px, calc(100vw - 84px)); }
 }
 
 @media (max-width: 520px) {

@@ -2080,6 +2080,22 @@ kbd {
   color: #9c9471;
 }
 
+.markdown-note-dialog {
+  --editor-paper: #fbf7df;
+  display: flex;
+  max-height: calc(100dvh - 48px);
+  flex-direction: column;
+  background: #fbf7df;
+}
+
+.markdown-note-dialog .dialog__header { flex-shrink: 0; }
+.bookmark-dialog { max-height: calc(100dvh - 48px); overflow: auto; }
+.markdown-note-dialog__body { padding: 0 22px 12px; overflow: auto; min-height: 0; }
+.markdown-note-dialog .markdown-save-status { position: sticky; bottom: -12px; padding: 8px 0; background: #fbf7df; }
+.note-dialog .markdown-document { min-height: 320px; }
+.bookmark-note-dialog { width: min(560px, calc(100vw - 48px)); }
+.field .markdown-document { min-height: 120px; }
+
 .request-dialog {
   width: min(780px, calc(100vw - 48px));
   max-height: calc(100vh - 48px);
@@ -2105,13 +2121,16 @@ kbd {
   color: var(--ink-faint);
   font-size: 10px;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
-.request-dialog__footer .secondary-button {
+.request-dialog__footer > button {
   display: inline-flex;
   align-items: center;
   gap: 5px;
 }
+
+.request-dialog__footer .markdown-save-status { flex: 1; min-width: 0; margin-right: 16px; }
 
 .request-result {
   margin: 0 22px 22px;
@@ -2208,6 +2227,8 @@ kbd {
 .request-result > p {
   margin: 0;
   padding: 0 14px 12px;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .confirm-dialog {

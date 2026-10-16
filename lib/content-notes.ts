@@ -1,3 +1,5 @@
+import type { BoardItem, BookmarkItem } from './types';
+
 export const CONTENT_NOTES_MESSAGE = {
   get: 'chihiro:content-notes:get',
   save: 'chihiro:content-notes:save',
@@ -9,6 +11,8 @@ export const CONTENT_NOTES_MESSAGE = {
 export interface ContentNoteRecord {
   id: string;
   note: string;
+  title: string;
+  url: string;
 }
 
 export interface ContentNotesSnapshot {
@@ -25,3 +29,21 @@ export type ContentNotesRequest =
 export type ContentNotesResponse<T = undefined> =
   | { ok: true; data: T }
   | { ok: false; error: string };
+
+export function pageHost(url: string): string | undefined {
+  try {
+    const parsed = new URL(url);
+    return /^https?:$/.test(parsed.protocol) ? parsed.host : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export function selectPageNotes(items: BoardItem[], url: string): ContentNoteRecord[] {
+  const host = pageHost(url);
+  if (!host) return [];
+  return items
+    .filter((item): item is BookmarkItem => item.type === 'bookmark' && Boolean(item.note?.trim()) && pageHost(item.url) === host)
+    .sort((a, b) => Number(Boolean(a.archivedAt)) - Number(Boolean(b.archivedAt)) || b.updatedAt.localeCompare(a.updatedAt))
+    .map((item) => ({ id: item.id, note: item.note || '', title: item.title, url: item.url }));
+}

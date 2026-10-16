@@ -12,7 +12,7 @@ import type {
   RequestItem,
   Workspace,
 } from './types';
-import { BOOKMARK_NOTE_MAX_LENGTH, REQUEST_COMMAND_MAX_LENGTH } from './types';
+import { REQUEST_COMMAND_MAX_LENGTH } from './types';
 import { dateKey, prepareReminderInput, resolveReminder, type ReminderInput } from './reminders';
 
 export const APP_VERSION = '0.1.0';
@@ -86,10 +86,7 @@ function deletedEntity(entityType: DeletedEntityType, entityId: string, deletedA
 }
 
 function prepareBookmarkNote(value?: string) {
-  if ((value?.length ?? 0) > BOOKMARK_NOTE_MAX_LENGTH) {
-    throw new Error(`书签备注最多 ${BOOKMARK_NOTE_MAX_LENGTH.toLocaleString()} 字`);
-  }
-  return value?.trim() || undefined;
+  return value?.trim() ? value : undefined;
 }
 
 export function prepareUrl(value: string) {
@@ -437,7 +434,6 @@ export async function createNote(collectionId: string) {
 }
 
 export async function updateNote(id: string, content: string) {
-  if (content.length > 20_000) throw new Error('单条记事最多 20,000 字');
   const existing = await db.items.get(id);
   if (!existing || existing.type !== 'note') throw new Error('记事不存在');
   await db.items.put({ ...existing, content, updatedAt: now() });

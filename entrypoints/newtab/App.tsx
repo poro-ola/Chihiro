@@ -195,7 +195,7 @@ function App() {
   useEffect(() => {
     const handleShortcut = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      const isTyping = target?.matches('input, textarea, select, [contenteditable="true"]');
+      const isTyping = target?.closest('input, textarea, select, [contenteditable="true"]');
       if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === 'k') {
         event.preventDefault();
         setSearchOpen(true);
@@ -477,13 +477,11 @@ function App() {
   const saveNoteDialog = async (content: string) => {
     if (!noteDialog) return;
     await updateNote(noteDialog.id, content);
-    notify('记事已更新');
   };
 
   const saveRequestDialog = async (input: { title: string; command: string }) => {
     if (!requestDialog) return;
     await updateRequest(requestDialog.id, input);
-    notify('请求卡片已保存');
   };
 
   if (!ready && !workspaces.length) {
