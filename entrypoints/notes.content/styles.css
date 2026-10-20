@@ -38,7 +38,7 @@ textarea:focus-visible {
 .content-notes-shell {
   position: fixed;
   inset: 0;
-  z-index: 400;
+  z-index: 2147483647;
   width: 0;
   height: 0;
   color: var(--ch-ink);
@@ -88,7 +88,7 @@ textarea:focus-visible {
 
 .content-notes-panel {
   position: fixed;
-  z-index: 410;
+  z-index: 2147483647;
   top: 14px;
   right: 54px;
   display: grid;

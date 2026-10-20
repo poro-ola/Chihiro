@@ -13,7 +13,7 @@ export default defineContentScript({
       anchor: 'body',
       append: 'last',
       alignment: 'top-left',
-      zIndex: 2_147_483_000,
+      zIndex: 2_147_483_647,
       isolateEvents: [
         'keydown',
         'keyup',

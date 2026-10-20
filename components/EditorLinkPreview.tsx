@@ -23,10 +23,14 @@ export function EditorLinkPreview({ editor, sourceMode, maxLength, onMarkdownCha
   const editInputRef = useRef<HTMLInputElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const closeTimer = useRef<number | undefined>(undefined);
+  const hoverTimer = useRef<number | undefined>(undefined);
+  const hoverAnchor = useRef<HTMLAnchorElement | undefined>(undefined);
 
   const keepOpen = useCallback(() => window.clearTimeout(closeTimer.current), []);
   const dismiss = useCallback(() => {
     window.clearTimeout(closeTimer.current);
+    window.clearTimeout(hoverTimer.current);
+    hoverAnchor.current = undefined;
     setPreview(undefined);
     setEditing(undefined);
     setError('');
@@ -50,20 +54,38 @@ export function EditorLinkPreview({ editor, sourceMode, maxLength, onMarkdownCha
     }
     if (!['http:', 'https:', 'mailto:'].includes(href.protocol)) return;
     keepOpen();
-    setPreview((current) => current?.anchor === anchor && current.href === href.href ? current : {
+    const nextPreview = {
       anchor, href: href.href, text: anchor.textContent?.trim() || href.hostname || '链接',
-    });
+    };
+    if (!preview || preview.anchor === anchor) {
+      setPreview((current) => current?.anchor === anchor && current.href === href.href ? current : nextPreview);
+      return;
+    }
+    // A popover above a link can overlap the preceding line. Don't switch
+    // previews while the pointer is merely passing over that neighboring link.
+    if (hoverAnchor.current === anchor) return;
+    window.clearTimeout(hoverTimer.current);
+    hoverAnchor.current = anchor;
+    hoverTimer.current = window.setTimeout(() => {
+      hoverAnchor.current = undefined;
+      hoverTimer.current = undefined;
+      keepOpen();
+      setPreview(nextPreview);
+    }, 140);
   };
 
   const beginEdit = () => {
     if (!editor || !preview) return;
     const linkType = editor.schema.marks.link;
     if (!linkType) return;
-    const position = editor.view.posAtDOM(preview.anchor, 0);
-    const range = getMarkRange(editor.state.doc.resolve(position), linkType);
+    // Resolve from inside the anchor. At a boundary between adjacent links,
+    // posAtDOM(anchor, 0) can resolve to the preceding link's mark.
+    const position = editor.view.posAtDOM(preview.anchor, 0) + 1;
+    const href = preview.anchor.getAttribute('href') || preview.href;
+    const range = getMarkRange(editor.state.doc.resolve(position), linkType, { href });
     if (!range) return;
     keepOpen();
-    setDraftHref(preview.anchor.getAttribute('href') || preview.href);
+    setDraftHref(href);
     setError('');
     setEditing(range);
   };
@@ -145,6 +167,7 @@ export function EditorLinkPreview({ editor, sourceMode, maxLength, onMarkdownCha
       root.removeEventListener('scroll', onScroll, true);
       root.removeEventListener('pointerdown', onPointerDown, true);
       window.removeEventListener('resize', dismiss);
+      window.clearTimeout(hoverTimer.current);
       if (popover.matches(':popover-open')) popover.hidePopover();
     };
   }, [preview, editing, error, dismiss]);
@@ -154,7 +177,14 @@ export function EditorLinkPreview({ editor, sourceMode, maxLength, onMarkdownCha
       onPointerOver={(event) => showLink(event.target)}
       onPointerOut={(event) => {
         const anchor = event.target instanceof Element ? event.target.closest('.markdown-document a[href]') : null;
-        if (anchor && !(event.relatedTarget instanceof Node && anchor.contains(event.relatedTarget))) dismissSoon();
+        if (anchor && !(event.relatedTarget instanceof Node && anchor.contains(event.relatedTarget))) {
+          if (hoverAnchor.current === anchor) {
+            window.clearTimeout(hoverTimer.current);
+            hoverTimer.current = undefined;
+            hoverAnchor.current = undefined;
+          }
+          dismissSoon();
+        }
       }}
       onFocus={(event) => showLink(event.target)}
       onBlur={(event) => {
