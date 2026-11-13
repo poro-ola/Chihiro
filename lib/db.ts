@@ -96,8 +96,8 @@ export function prepareUrl(value: string) {
   const withProtocol = /^[a-z][a-z\d+.-]*:/i.test(candidate) ? candidate : `https://${candidate}`;
   const url = new URL(withProtocol);
 
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
-    throw new Error('仅支持 http 或 https 网址');
+  if (!['http:', 'https:', 'file:'].includes(url.protocol)) {
+    throw new Error('仅支持 http、https 或 file 地址');
   }
 
   return url.toString();
@@ -105,6 +105,7 @@ export function prepareUrl(value: string) {
 
 export function normalizeUrl(value: string) {
   const url = new URL(prepareUrl(value));
+  if (url.protocol === 'file:') return url.toString();
   url.hostname = url.hostname.toLowerCase();
 
   const trackingKeys = new Set(['fbclid', 'gclid', 'dclid', 'msclkid']);
@@ -120,6 +121,19 @@ export function normalizeUrl(value: string) {
 
   if (url.pathname === '/' && !url.search && !url.hash) url.pathname = '';
   return url.toString();
+}
+
+export function bookmarkTitle(value: string) {
+  const url = new URL(value);
+  if (url.protocol !== 'file:') return url.hostname;
+
+  const filename = url.pathname.split('/').filter(Boolean).pop();
+  if (!filename) return '本地文件';
+  try {
+    return decodeURIComponent(filename);
+  } catch {
+    return filename;
+  }
 }
 
 export async function ensureSeedData() {
@@ -358,7 +372,7 @@ export async function createBookmark(
     id: createId('bookmark'),
     collectionId,
     type: 'bookmark',
-    title: input.title.trim() || new URL(url).hostname,
+    title: input.title.trim() || bookmarkTitle(url),
     url,
     normalizedUrl,
     note: prepareBookmarkNote(input.note),
@@ -402,7 +416,7 @@ export async function updateBookmark(
 
   await db.items.put({
     ...existing,
-    title: input.title.trim() || new URL(url).hostname,
+    title: input.title.trim() || bookmarkTitle(url),
     url,
     normalizedUrl,
     note: prepareBookmarkNote(input.note),

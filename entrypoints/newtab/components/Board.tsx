@@ -60,7 +60,8 @@ interface BoardProps {
 
 function hostOf(url: string) {
   try {
-    return new URL(url).hostname.replace(/^www\./, '');
+    const parsed = new URL(url);
+    return parsed.protocol === 'file:' ? '本地文件' : parsed.hostname.replace(/^www\./, '');
   } catch {
     return url;
   }

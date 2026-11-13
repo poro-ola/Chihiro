@@ -78,18 +78,18 @@ export function BookmarkDialog({ open, item, focusField = 'url', collectionName,
           }}
         >
           <label className="field">
-            <span>网址</span>
+            <span>链接地址</span>
             <input
               value={url}
               onChange={(event) => setUrl(event.target.value)}
-              placeholder="https://example.com"
+              placeholder="https://example.com 或 file:///Users/…/文件.html"
               autoFocus={focusField === 'url'}
               spellCheck={false}
             />
           </label>
           <label className="field">
             <span>标题</span>
-            <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="留空则使用域名" maxLength={200} />
+            <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="留空则使用域名或文件名" maxLength={200} />
           </label>
           <div className="field">
             <span>备注 <em>可选 · {note.length.toLocaleString()} 字符</em></span>
